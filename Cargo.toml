@@ -1,0 +1,9 @@
+[package]
+name = "bevy_bump"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.13"
+enum-map = "2.7.3"
+bitmask-enum = "2.2.3"
