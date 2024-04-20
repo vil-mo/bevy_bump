@@ -27,14 +27,14 @@ impl Plugin for RegisterSystems {
                     .after(PhysicsSetSteps::MoveActors),
             ),
         );
-
-        app.add_systems(
-            FixedPostUpdate,
-            apply_velocity::SYSTEMS.in_set(PhysicsSetSteps::ApplyVelocity),
-        );
-        app.add_systems(
-            FixedPostUpdate,
-            move_actors::SYSTEMS.in_set(PhysicsSetSteps::MoveActors),
-        );
+        //
+        // app.add_systems(
+        //     FixedPostUpdate,
+        //     apply_velocity::SYSTEMS.in_set(PhysicsSetSteps::ApplyVelocity),
+        // );
+        // app.add_systems(
+        //     FixedPostUpdate,
+        //     move_actors::SYSTEMS.in_set(PhysicsSetSteps::MoveActors),
+        // );
     }
 }
