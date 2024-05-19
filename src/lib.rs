@@ -1,8 +1,5 @@
-pub mod body;
-pub mod scanning;
-pub mod solving;
+pub mod core;
 mod systems;
-//pub mod physics_world;
 
 use bevy::prelude::*;
 

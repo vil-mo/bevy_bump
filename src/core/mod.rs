@@ -1,4 +1,4 @@
 pub mod collider;
-pub mod collider_query;
+pub mod broad_phase;
 pub mod layer;
 pub mod response;
