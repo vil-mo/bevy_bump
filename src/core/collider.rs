@@ -1,12 +1,12 @@
-use std::ops::{Deref, DerefMut};
 use bevy::prelude::*;
+use std::ops::{Deref, DerefMut};
 
 /// A shape against which collisions are checked
 /// Should be able to store global position of collider
 pub trait Collider: Clone {
     /// Needed access for correct normal calculations
     fn position(&self) -> Vec2;
-    
+
     /// After calling this method, `self.position` should return `to`
     fn set_position(&mut self, to: Vec2);
 
@@ -18,8 +18,8 @@ pub trait Collider: Clone {
 pub trait ColliderInteraction<T: Collider>: Collider {
     /// Returns true if `self` intersects with `other`
     fn intersect(&self, other: &T) -> bool;
-    
-    /// If `self` were to move along the `offset`, 
+
+    /// If `self` were to move along the `offset`,
     /// returns distance at which `self.position` will be intersecting `other`  
     fn cast(&self, other: &T, offset: Vec2) -> Option<f32>;
 }
@@ -36,10 +36,10 @@ impl<T: Collider + ?Sized> Collider for Box<T> {
     }
 }
 
-/// Trait allows for easier to read generic code 
+/// Trait allows for easier to read generic code
 pub trait CollisionGroup: 'static {
     /// Actor that is colliding
     type Actor: ColliderInteraction<Self::Target>;
-    /// Bodies that generate collisions and usually stop actor's movement 
+    /// Bodies that generate collisions and usually stop actor's movement
     type Target: Collider;
 }

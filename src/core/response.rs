@@ -9,7 +9,7 @@ const DELTA: f32 = 0.0001;
 #[derive(Debug, Clone, Copy)]
 pub struct CollisionInformation {
     /// The point on the desired path (or on the path corrected by solver) at with collision was detected
-    /// Should make sense for it to be [`Collider::position`] of actor that performed movement 
+    /// Should make sense for it to be [`Collider::position`] of actor that performed movement
     pub point: Vec2,
     /// Result of [`Collider::normal`] of body against which collision was detected
     pub normal: Direction2d,
@@ -20,17 +20,16 @@ pub struct CollisionInformation {
 ///
 /// `colliders` is a broad phase
 /// `actor` is actor that performs the collision
-/// 
+///
 /// `offset` is offset that `actor` desires to move this call
-/// 
-/// Returns actual offset that actor should move from the point at with collision was detected 
+///
+/// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
-pub type CollisionResponse<Group: CollisionGroup, BF: BroadPhase<Group>> =
-    fn(
-        colliders: &BF,
-        actor: &<Group as CollisionGroup>::Actor,
-        offset: Vec2,
-    ) -> (Vec2, Vec<CollisionInformation>);
+pub type CollisionResponse<Group, BF> = fn(
+    colliders: &BF,
+    actor: &<Group as CollisionGroup>::Actor,
+    offset: Vec2,
+) -> (Vec2, Vec<CollisionInformation>);
 
 pub fn ignore<Group: CollisionGroup, BF: BroadPhase<Group>>(
     colliders: &BF,
@@ -121,16 +120,16 @@ pub fn slide<Group: CollisionGroup, BF: BroadPhase<Group>>(
     let (mut new_offset, mut opt_info) = touch_light(colliders, actor, offset);
 
     let mut actor = actor.clone();
-    
+
     while let Some(info) = opt_info {
         actor.set_position(info.point);
-        
+
         let along = info.normal.perp();
         let diff_offset = last_offset - new_offset;
-        
+
         last_offset = diff_offset.project_onto_normalized(along);
         (new_offset, opt_info) = touch_light(colliders, &actor, last_offset);
-        
+
         res_vec.push(info);
     }
 

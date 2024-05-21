@@ -1,7 +1,7 @@
 use super::collider::CollisionGroup;
 use bevy::prelude::*;
 
-/// BroadPhase returns iterators over 
+/// BroadPhase returns iterators over
 pub trait BroadPhase<Group: CollisionGroup> {
     /// Should return only colliders that are potentially colliding with actor,
     /// and only thing that could prevent collision is stored in collider itself (usually it`s only position)

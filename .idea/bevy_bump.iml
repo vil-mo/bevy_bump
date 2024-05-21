@@ -4,6 +4,11 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/enum-map-derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/enum-map/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/enum-map/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/bevy_bump_derives/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
