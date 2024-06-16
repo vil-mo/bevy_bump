@@ -411,6 +411,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "enumset",
+ "indexmap",
+ "iter-n",
+ "plane-2d",
+ "serde",
 ]
 
 [[package]]
@@ -2019,6 +2023,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eec1c01eb1de97451ee0d60de7d81cf1e72aabefb021616027f3d1c3ec1c723c"
 
 [[package]]
+name = "grid"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be136d9dacc2a13cc70bb6c8f902b414fb2641f8db1314637c6b7933411a8f82"
+
+[[package]]
 name = "guillotiere"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2151,6 +2161,12 @@ dependencies = [
  "core-foundation-sys",
  "mach2",
 ]
+
+[[package]]
+name = "iter-n"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3586a9e267e4295a752f36fe15aac10962123fd8fe3ad30aae42e0f5bd875ce5"
 
 [[package]]
 name = "itertools"
@@ -2752,6 +2768,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
 
 [[package]]
+name = "plane-2d"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8899d93d275eff02e778e371da4a7afe7f0b046153d8d6bc6db0cc169ed02d4"
+dependencies = [
+ "grid 0.14.0",
+]
+
+[[package]]
 name = "png"
 version = "0.17.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3144,7 +3169,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1315457ccd9c3def787a18fae91914e623e4dcff019b64ce39f5268ded53d3d"
 dependencies = [
  "arrayvec",
- "grid",
+ "grid 0.10.0",
  "num-traits",
  "slotmap",
 ]

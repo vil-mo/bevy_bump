@@ -1,5 +1,8 @@
-use crate::core::broad_phase::BroadPhase;
-use crate::core::collider::{Collider, ColliderInteraction, CollisionGroup};
+use super::{
+    broad_phase::BroadPhase,
+    collider::{Collider, ColliderInteraction},
+    ColliderGroup,
+};
 use bevy::prelude::*;
 
 /// Collisions are accurate up to the DELTA distance
@@ -15,6 +18,22 @@ pub struct CollisionInformation {
     pub normal: Direction2d,
 }
 
+#[derive(Debug, Clone)]
+pub struct ResponseResult {
+    pub actual_position: Vec2,
+    pub collisions: Vec<CollisionInformation>,
+}
+
+impl ResponseResult {
+    #[inline]
+    pub fn new(actual_position: Vec2, collisions: Vec<CollisionInformation>) -> Self {
+        Self {
+            actual_position,
+            collisions,
+        }
+    }
+}
+
 /// Solver defines how actor will react to met colliders.
 /// When actor meets collider it refers to `CollisionResponse`.
 ///
@@ -25,140 +44,176 @@ pub struct CollisionInformation {
 ///
 /// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
-pub type CollisionResponse<Group, BF> = fn(
-    colliders: &BF,
-    actor: &<Group as CollisionGroup>::Actor,
-    offset: Vec2,
-) -> (Vec2, Vec<CollisionInformation>);
-
-pub fn ignore<Group: CollisionGroup, BF: BroadPhase<Group>>(
-    colliders: &BF,
-    actor: &Group::Actor,
-    offset: Vec2,
-) -> (Vec2, Vec<CollisionInformation>) {
-    let position = actor.position();
-    let normal = offset.normalize();
-
-    (
-        offset,
-        colliders
-            .cast(actor, offset)
-            .filter_map(|other| {
-                actor.cast(other, offset).map(|dist| CollisionInformation {
-                    point: position + normal * dist,
-                    normal: other.normal(position),
-                })
-            })
-            .collect(),
-    )
+pub trait CollisionResponse: Clone {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        colliders: &BF,
+        actor: &<Group as ColliderGroup>::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult;
 }
 
-fn touch_point<'a, Group: CollisionGroup>(
-    colliders: impl Iterator<Item = &'a Group::Target>,
-    actor: &Group::Actor,
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ignore;
+
+impl CollisionResponse for Ignore {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        _: &BF,
+        _: &Group::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult {
+        ResponseResult::new(offset, vec![])
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Pass;
+impl CollisionResponse for Pass {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        colliders: &BF,
+        actor: &Group::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult {
+        let position = actor.position();
+        let normal = offset.normalize();
+
+        ResponseResult {
+            actual_position: offset,
+            collisions: colliders
+                .cast(actor, offset)
+                .filter_map(|other| {
+                    actor
+                        .cast(other, offset)
+                        .map(|(dist, norm)| CollisionInformation {
+                            point: position + normal * dist,
+                            normal: norm,
+                        })
+                })
+                .collect(),
+        }
+    }
+}
+
+fn touch_point<'a, T: Collider + 'a, A: ColliderInteraction<T>>(
+    colliders: impl Iterator<Item = &'a T>,
+    actor: &A,
     desired_offset: Vec2,
-) -> Option<(f32, &'a Group::Target)> {
+) -> (Vec2, Option<CollisionInformation>) {
     let mut res = None;
+    let offset_normal = desired_offset.normalize();
+    let position = actor.position();
 
     for collider in colliders {
         let dist = actor.cast(collider, desired_offset);
 
-        if let Some(dist) = dist {
+        if let Some((dist, normal)) = dist {
             if let Some((old_dist, _)) = res {
                 if old_dist > dist {
-                    res = Some((dist - DELTA, collider));
+                    res = Some((dist, normal));
                 }
             } else {
-                res = Some((dist - DELTA, collider));
+                res = Some((dist, normal));
             }
         }
     }
 
-    res
-}
-
-pub fn touch_light<Group: CollisionGroup, BF: BroadPhase<Group>>(
-    colliders: &BF,
-    actor: &Group::Actor,
-    offset: Vec2,
-) -> (Vec2, Option<CollisionInformation>) {
-    match touch_point::<Group>(colliders.cast(actor, offset), actor, offset) {
-        None => (offset, None),
-        Some((dist, other)) => {
-            let position = actor.position();
-            let point = position + offset.normalize() * dist;
-
-            (
-                point,
-                Some(CollisionInformation {
-                    point,
-                    normal: other.normal(position),
-                }),
-            )
-        }
+    if let Some(res) = res {
+        let actual_offset = offset_normal * (res.0 - DELTA);
+        (
+            actual_offset,
+            Some(CollisionInformation {
+                point: actual_offset + position,
+                normal: res.1,
+            }),
+        )
+    } else {
+        (desired_offset, None)
     }
 }
 
-pub fn touch<Group: CollisionGroup, BF: BroadPhase<Group>>(
-    colliders: &BF,
-    actor: &Group::Actor,
-    offset: Vec2,
-) -> (Vec2, Vec<CollisionInformation>) {
-    let (offset, collider) = touch_light(colliders, actor, offset);
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Touch;
+impl CollisionResponse for Touch {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        colliders: &BF,
+        actor: &Group::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult {
+        let (offset, collider) = touch_point(colliders.cast(actor, offset), actor, offset);
 
-    (offset, collider.into_iter().collect())
+        ResponseResult::new(offset, collider.into_iter().collect())
+    }
 }
 
-pub fn slide<Group: CollisionGroup, BF: BroadPhase<Group>>(
+fn trajectory_change_on_touch<Group: ColliderGroup, BF: BroadPhase<Group>>(
     colliders: &BF,
-    actor: &Group::Actor,
+    actor: &Group::Hitbox,
     offset: Vec2,
-) -> (Vec2, Vec<CollisionInformation>) {
+    // (movement that was supposed to be made, but stopped, normal of the collision) -> new movement from position where were stopped
+    mut new_trajectory: impl FnMut(Vec2, Direction2d) -> Vec2,
+) -> ResponseResult {
     let mut res_vec = Vec::new();
 
     let mut last_offset = offset;
-    let (mut new_offset, mut opt_info) = touch_light(colliders, actor, offset);
+    let (mut new_offset, mut opt_info) = touch_point(colliders.cast(actor, offset), actor, offset);
 
     let mut actor = actor.clone();
 
     while let Some(info) = opt_info {
         actor.set_position(info.point);
 
-        let along = info.normal.perp();
         let diff_offset = last_offset - new_offset;
 
-        last_offset = diff_offset.project_onto_normalized(along);
-        (new_offset, opt_info) = touch_light(colliders, &actor, last_offset);
+        last_offset = new_trajectory(diff_offset, info.normal);
+        (new_offset, opt_info) = touch_point(colliders.cast(&actor, offset), &actor, last_offset);
 
         res_vec.push(info);
     }
 
-    (actor.position() + new_offset, res_vec)
+    ResponseResult::new(actor.position() + new_offset, res_vec)
 }
 
-pub fn bounce<Group: CollisionGroup, BF: BroadPhase<Group>>(
-    colliders: &BF,
-    actor: &Group::Actor,
-    offset: Vec2,
-) -> (Vec2, Vec<CollisionInformation>) {
-    let mut res_vec = Vec::new();
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Slide;
 
-    let mut last_offset = offset;
-    let (mut new_offset, mut opt_info) = touch_light(colliders, actor, offset);
-
-    let mut actor = actor.clone();
-
-    while let Some(info) = opt_info {
-        actor.set_position(info.point);
-
-        let along = info.normal.perp();
-        let diff_offset = last_offset - new_offset;
-
-        last_offset = diff_offset - 2.0 * diff_offset.reject_from_normalized(along);
-        (new_offset, opt_info) = touch_light(colliders, &actor, last_offset);
-
-        res_vec.push(info);
+impl CollisionResponse for Slide {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        colliders: &BF,
+        actor: &Group::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult {
+        trajectory_change_on_touch(colliders, actor, offset, |left_movement, normal| {
+            left_movement.project_onto_normalized(normal.perp())
+        })
     }
+}
 
-    (actor.position() + new_offset, res_vec)
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Bounce;
+
+impl CollisionResponse for Bounce {
+    fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
+        &mut self,
+        colliders: &BF,
+        actor: &Group::Hitbox,
+        offset: Vec2,
+    ) -> ResponseResult {
+        trajectory_change_on_touch(colliders, actor, offset, |left_movement, normal| {
+            left_movement - 2.0 * left_movement.project_onto_normalized(*normal)
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LimitedBounce(pub u32);
+
+impl LimitedBounce {
+    #[inline]
+    pub fn new(bounces: u32) -> Self {
+        Self(bounces)
+    }
 }
