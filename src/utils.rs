@@ -78,6 +78,34 @@ where
     return right;
 }
 
+struct Item(i32);
+
+struct A(Item);
+struct B(Item);
+
+struct Wrapper<'a> {
+    a: &'a A,
+    b: &'a B,
+}
+
+impl<'a> Wrapper<'a> {
+    fn iterate_in_wrapper(&self) -> impl Iterator<Item = &'a Item> {
+        std::iter::once(&self.a.0).chain(std::iter::once(&self.b.0))
+    }
+
+    fn iterate_less_than_20_not_trait(&self) -> impl Iterator<Item = &'a Item> {
+        self.iterate_in_wrapper().filter(|el| el.0 < 20)
+    }
+}
+fn iterate_more_than_10_and_less_than_20<'a>(a: &'a A, b: &'a B) -> impl Iterator<Item = i32> + 'a {
+    let wrapper = Wrapper { a, b };
+
+    wrapper
+        .iterate_less_than_20_not_trait()
+        .filter_map(|el| if el.0 > 10 { Some(el.0) } else { None })
+}
+
+#[cfg(test)]
 mod tests {
     use super::{binary_search, insertion_sort};
     #[test]
