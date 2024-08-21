@@ -1,12 +1,12 @@
 use crate::core::collider::ColliderInteraction;
 
-pub mod broad_phase;
+pub mod collisions_query;
 pub mod collider;
 pub mod response;
 
 /// Trait allows for easier to read generic code
 pub trait ColliderGroup: 'static {
-    type CollisionData;
+    type HurtboxData;
 
     /// Actor that is colliding
     type Hitbox: ColliderInteraction<Self::Hurtbox> + 'static;

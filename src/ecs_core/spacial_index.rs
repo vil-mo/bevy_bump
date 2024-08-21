@@ -10,10 +10,14 @@ use bevy::{
 use plane_2d::Plane;
 use std::marker::PhantomData;
 
-pub(crate) fn register_world<Layer: LayerGroup>(app: &mut App, pixels_per_chunk: f32) {
+
+// TODO: Make private
+pub fn register_index<Layer: LayerGroup>(app: &mut App, pixels_per_chunk: f32) {
     app.insert_resource(SpacialIndex::<Layer>::new(pixels_per_chunk));
 
-    // app.add_systems(PostUpdate, update_world_entries::<Layer>);
+    app.add_systems(PostUpdate, update_spacial_index_registry::<Layer>);
+    app.observe(on_add_spacial_index_registry::<Layer>)
+        .observe(on_remove_spacial_index_registry::<Layer>);
 }
 
 /// Entities with [`ColliderAabb`]s sorted along an axis by their extents.
@@ -125,6 +129,39 @@ pub struct SpacialIndexRegistry<Layer: LayerGroup> {
     _pd: PhantomData<Layer>,
 }
 
+impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
+    #[inline]
+    pub fn current_aabb(&self) -> Aabb2d {
+        Aabb2d {
+            min: self.current_shape_bounding.min + self.current_position,
+            max: self.current_shape_bounding.max + self.current_position,
+        }
+    }
+
+    #[inline]
+    pub fn last_aabb(&self) -> Aabb2d {
+        Aabb2d {
+            min: self.last_shape_bounding.min + self.last_position,
+            max: self.last_shape_bounding.max + self.last_position,
+        }
+    }
+
+    fn update(&mut self, hurtbox: &HurtboxShape<Layer>, transform: &Transform) {
+        let current_local_position = transform.translation.xy();
+        let position_change = current_local_position - self.last_local_position;
+
+        let new_position = self.current_position + position_change;
+        let new_shape_bounding = hurtbox.bounding();
+
+        self.last_position = self.current_position;
+        self.last_shape_bounding = self.current_shape_bounding;
+        self.last_local_position = current_local_position;
+
+        self.current_position = new_position;
+        self.current_shape_bounding = new_shape_bounding;
+    }
+}
+
 macro_rules! hurtbox_registering_error {
     ($x:expr) => {
             format!("Trying to register entity as hurtbox {}. Unable to deduce entity's position in SpacialIndex.", $x)
@@ -169,39 +206,6 @@ fn on_remove_spacial_index_registry<Layer: LayerGroup>(
     let registry = hurtboxes.get_mut(entity).unwrap();
 
     index.remove_entity(entity, registry.current_aabb());
-}
-
-impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
-    #[inline]
-    pub fn current_aabb(&self) -> Aabb2d {
-        Aabb2d {
-            min: self.current_shape_bounding.min + self.current_position,
-            max: self.current_shape_bounding.max + self.current_position,
-        }
-    }
-
-    #[inline]
-    pub fn last_aabb(&self) -> Aabb2d {
-        Aabb2d {
-            min: self.last_shape_bounding.min + self.last_position,
-            max: self.last_shape_bounding.max + self.last_position,
-        }
-    }
-
-    fn update(&mut self, hurtbox: &HurtboxShape<Layer>, transform: &Transform) {
-        let current_local_position = transform.translation.xy();
-        let position_change = current_local_position - self.last_local_position;
-
-        let new_position = self.current_position + position_change;
-        let new_shape_bounding = hurtbox.bounding();
-
-        self.last_position = self.current_position;
-        self.last_shape_bounding = self.current_shape_bounding;
-        self.last_local_position = current_local_position;
-
-        self.current_position = new_position;
-        self.current_shape_bounding = new_shape_bounding;
-    }
 }
 
 fn update_spacial_index_registry<Layer: LayerGroup>(

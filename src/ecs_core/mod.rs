@@ -17,7 +17,7 @@ pub trait LayerGroup: CollisionLayer + Send + Sync + 'static {
 }
 
 impl<T: LayerGroup> ColliderGroup for T {
-    type CollisionData = Entity;
+    type HurtboxData = Entity;
     type Hitbox = T::Hitbox;
     type Hurtbox = T::Hurtbox;
 }

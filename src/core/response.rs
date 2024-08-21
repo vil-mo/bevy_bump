@@ -1,4 +1,4 @@
-use super::{broad_phase::BroadPhase, collider::Collider, ColliderGroup};
+use super::{collisions_query::CollisionsQuery, collider::Collider, ColliderGroup};
 use bevy::prelude::*;
 
 /// Collisions are accurate up to the DELTA distance
@@ -12,7 +12,7 @@ pub struct CollisionInformation<Group: ColliderGroup> {
     pub global_position: Vec2,
     /// Result of [`Collider::normal`] of body against which collision was detected
     pub normal: Dir2,
-    pub data: Group::CollisionData,
+    pub data: Group::HurtboxData,
 }
 
 pub enum RunningResponseVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
@@ -138,9 +138,9 @@ impl<'a, Next: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGrou
 /// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
 pub trait CollisionResponse {
-    fn respond<'a, Group: ColliderGroup, BF: BroadPhase<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
         &'a mut self,
-        colliders: &'a BF,
+        colliders: &'a Collisions,
         actor: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a;
@@ -150,13 +150,13 @@ pub trait CollisionResponse {
 pub struct Ignore;
 
 impl CollisionResponse for Ignore {
-    fn respond<'a, Group: ColliderGroup, BF: BroadPhase<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
         &'a mut self,
-        colliders: &'a BF,
-        actor: Collider<'a, Group::Hitbox>,
+        _colliders: &'a Collisions,
+        _actor: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a {
-        ImmediateResultingOffset::new(offset, empty::<Group>())
+        ImmediateResultingOffset::new(offset, empty())
     }
 }
 
@@ -164,9 +164,9 @@ impl CollisionResponse for Ignore {
 pub struct Pass;
 
 impl CollisionResponse for Pass {
-    fn respond<'a, Group: ColliderGroup, BF: BroadPhase<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
         &'a mut self,
-        colliders: &'a BF,
+        colliders: &'a Collisions,
         actor: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a {
@@ -177,14 +177,10 @@ impl CollisionResponse for Pass {
             offset,
             colliders
                 .cast(actor, offset)
-                .filter_map(move |(other, data)| {
-                    actor
-                        .cast(other, offset)
-                        .map(|(dist, norm)| CollisionInformation {
-                            global_position: position + normal * dist,
-                            normal: norm,
-                            data,
-                        })
+                .map(move |(dist, norm, data)| CollisionInformation {
+                    global_position: position + normal * dist,
+                    normal: norm,
+                    data,
                 }),
         )
     }

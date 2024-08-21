@@ -2,8 +2,6 @@ use crate::ecs_core::LayerGroup;
 use bevy::prelude::*;
 use std::marker::PhantomData;
 
-fn register_hurtbox<Layer: LayerGroup>(_app: &mut App) {}
-
 #[derive(Reflect, Component, Copy, Clone, Default, PartialEq, Debug, Deref, DerefMut)]
 pub struct Velocity(pub Vec2);
 
@@ -58,3 +56,8 @@ impl<Layer: LayerGroup> HurtboxMonitorable<Layer> {
         Self(monitorable, PhantomData)
     }
 }
+
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct RegisterHurtbox;
+
