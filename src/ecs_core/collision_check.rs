@@ -1,13 +1,11 @@
-use crate::core::collider::Collider;
-use crate::core::collisions_query::CollisionsQuery;
-use crate::core::response::CollisionResponse;
-use crate::core::ColliderGroup;
-use crate::ecs_core::components::{HurtboxLayer, HurtboxMonitorable, HurtboxShape};
-use crate::ecs_core::spacial_index::{SpacialIndex, SpacialIndexRegistry};
-use crate::ecs_core::LayerGroup;
+use super::{
+    components::{HurtboxLayer, HurtboxMonitorable, HurtboxShape},
+    spacial_index::{SpacialIndex, SpacialIndexRegistry},
+    LayerGroup,
+};
+use crate::core::{collider::Collider, collisions_query::CollisionsQuery, ColliderGroup};
 use crate::utils::Bounded;
-use bevy::ecs::entity::EntityHashSet;
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::{entity::EntityHashSet, system::SystemParam};
 use bevy::math::bounding::{Aabb2d, BoundingVolume};
 use bevy::prelude::*;
 
@@ -50,17 +48,18 @@ impl<'w, 's, Layer: LayerGroup> CollisionCheck<'w, 's, Layer> {
         collisions.intersect(hitbox)
     }
 
-    pub fn check_movement<'a>(
-        &'a self,
-        hitbox: Collider<'a, Layer::Hitbox>,
-        offset: Vec2,
-        layer: &'a Layer,
-        response: impl CollisionResponse,
-    ) {
-        let collisions = self.collisions_on_layer(layer);
+    // TODO: Implement
+    // pub fn check_movement<'a>(
+    //     &'a self,
+    //     hitbox: Collider<'a, Layer::Hitbox>,
+    //     offset: Vec2,
+    //     layer: &'a Layer,
+    //     response: impl CollisionResponse,
+    // ) {
+    //     let collisions = self.collisions_on_layer(layer);
 
-        collisions.cast()
-    }
+    //     collisions.cast(hitbox, offset)
+    // }
 }
 
 pub struct CollisionsOnLayerAllowDuplication<'a, Layer: LayerGroup> {
@@ -190,7 +189,8 @@ impl<Layer: LayerGroup> CollisionsQuery<Layer> for CollisionsOnLayer<'_, Layer> 
         };
         let aabb = aabb1.merge(&aabb2);
 
-        self.inner.iter_hurtboxes_on_aabb(aabb)
+        self.inner
+            .iter_hurtboxes_on_aabb(aabb)
             .filter(move |(_, entity)| deduplication_set.insert(*entity))
             .filter_map(move |(other, data)| {
                 if let Some((dist, norm)) = hitbox.cast(other, offset) {

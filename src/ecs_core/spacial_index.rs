@@ -1,15 +1,12 @@
-use crate::ecs_core::components::HurtboxShape;
-use crate::ecs_core::LayerGroup;
+use super::{components::HurtboxShape, LayerGroup};
 use crate::utils::Bounded;
-use bevy::ecs::reflect::ReflectMapEntitiesResource;
 use bevy::math::bounding::Aabb2d;
+use bevy::utils::HashMap;
 use bevy::{
     ecs::entity::{EntityMapper, MapEntities},
     prelude::*,
 };
-use plane_2d::Plane;
 use std::marker::PhantomData;
-
 
 // TODO: Make private
 pub fn register_index<Layer: LayerGroup>(app: &mut App, pixels_per_chunk: f32) {
@@ -21,17 +18,16 @@ pub fn register_index<Layer: LayerGroup>(app: &mut App, pixels_per_chunk: f32) {
 }
 
 /// Entities with [`ColliderAabb`]s sorted along an axis by their extents.
-#[derive(Resource, Reflect)]
-#[reflect(Resource, MapEntitiesResource)]
+#[derive(Resource)]
 pub struct SpacialIndex<Layer: LayerGroup> {
-    pub(crate) chunks: Plane<Vec<Entity>>,
+    pub(crate) chunks: HashMap<IVec2, Vec<Entity>>,
     pub(crate) pixels_per_chunk: f32,
     pd: PhantomData<Layer>,
 }
 
 impl<Layer: LayerGroup> MapEntities for SpacialIndex<Layer> {
     fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
-        for (_, chunk) in self.chunks.iter_all_mut() {
+        for (_, chunk) in self.chunks.iter_mut() {
             for entity in chunk.iter_mut() {
                 *entity = entity_mapper.map_entity(*entity);
             }
@@ -59,7 +55,7 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
     pub fn new(pixels_per_chunk: f32) -> Self {
         SpacialIndex {
             // TODO: fix placeholder numbers
-            chunks: Plane::new(0, 0, 10, 10),
+            chunks: HashMap::default(),
             pixels_per_chunk,
             pd: PhantomData,
         }
@@ -81,27 +77,29 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
         let min = self.global_to_chunk(aabb.min);
         let max = self.global_to_chunk(aabb.max);
 
-        self.chunks
-            .iter_rect(min.x, min.y, max.x, max.y)
-            .map(|(_, chunk)| chunk)
+        (min.x..=max.x)
+            .flat_map(move |x| (min.y..=max.y).map(move |y| (x, y)))
+            .filter_map(|(x, y)| self.chunks.get(&IVec2::new(x, y)))
     }
 
-    pub(crate) fn iter_chunks_on_aabb_mut(
+    pub(crate) fn foreach_chunk_on_aabb_mut(
         &mut self,
         aabb: Aabb2d,
-    ) -> impl Iterator<Item = &mut Vec<Entity>> {
+        mut f: impl FnMut(&mut Vec<Entity>),
+    ) {
         let min = self.global_to_chunk(aabb.min);
         let max = self.global_to_chunk(aabb.max);
 
-        self.chunks
-            .iter_rect_mut(min.x, min.y, max.x, max.y)
-            .map(|(_, chunk)| chunk)
+        for x in min.x..=max.x {
+            for y in min.y..=max.y {
+                let chunk = self.chunks.entry(IVec2::new(x, y)).or_default();
+                f(chunk);
+            }
+        }
     }
 
     pub(crate) fn add_entity(&mut self, entity: Entity, aabb: Aabb2d) {
-        for chunk in self.iter_chunks_on_aabb_mut(aabb) {
-            chunk.push(entity);
-        }
+        self.foreach_chunk_on_aabb_mut(aabb, |chunk| chunk.push(entity));
     }
 
     pub(crate) fn change_entity(&mut self, entity: Entity, old_aabb: Aabb2d, new_aabb: Aabb2d) {
@@ -110,28 +108,39 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
     }
 
     pub(crate) fn remove_entity(&mut self, entity: Entity, aabb: Aabb2d) {
-        for chunk in self.iter_chunks_on_aabb_mut(aabb) {
+        self.foreach_chunk_on_aabb_mut(aabb, |chunk| {
             if let Some(entity_index) = chunk.iter().position(|entry| *entry == entity) {
                 chunk.swap_remove(entity_index);
             }
-        }
+        });
     }
 }
 
 #[derive(Component, Debug, Clone)]
 pub struct SpacialIndexRegistry<Layer: LayerGroup> {
-    pub current_shape_bounding: Aabb2d,
-    pub current_position: Vec2,
+    pub(crate) current_shape_bounding: Aabb2d,
+    pub(crate) current_position: Vec2,
     last_shape_bounding: Aabb2d,
     last_position: Vec2,
 
     last_local_position: Vec2,
-    _pd: PhantomData<Layer>,
+    marker: PhantomData<Layer>,
 }
 
 impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
+    pub fn not_valid() -> Self {
+        Self {
+            current_shape_bounding: Aabb2d::new(Vec2::NAN, Vec2::NAN),
+            current_position: Vec2::NAN,
+            last_shape_bounding: Aabb2d::new(Vec2::NAN, Vec2::NAN),
+            last_position: Vec2::NAN,
+            last_local_position: Vec2::NAN,
+            marker: PhantomData,
+        }
+    }
+
     #[inline]
-    pub fn current_aabb(&self) -> Aabb2d {
+    pub fn aabb(&self) -> Aabb2d {
         Aabb2d {
             min: self.current_shape_bounding.min + self.current_position,
             max: self.current_shape_bounding.max + self.current_position,
@@ -139,7 +148,7 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
     }
 
     #[inline]
-    pub fn last_aabb(&self) -> Aabb2d {
+    fn last_aabb(&self) -> Aabb2d {
         Aabb2d {
             min: self.last_shape_bounding.min + self.last_position,
             max: self.last_shape_bounding.max + self.last_position,
@@ -164,8 +173,14 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
 
 macro_rules! hurtbox_registering_error {
     ($x:expr) => {
-            format!("Trying to register entity as hurtbox {}. Unable to deduce entity's position in SpacialIndex.", $x)
-    }
+        format!(
+            "Trying to register entity as hurtbox{}. \
+            Unable to deduce entity's position in SpacialIndex. \
+            Use `RegisterHurtbox` component to register hurtbox as soon as possible, \
+            instead of trying to do it manually.",
+            $x
+        )
+    };
 }
 
 fn on_add_spacial_index_registry<Layer: LayerGroup>(
@@ -182,18 +197,31 @@ fn on_add_spacial_index_registry<Layer: LayerGroup>(
 
     let (mut registry, shape, transform) = hurtboxes.get_mut(entity).unwrap();
     let shape = shape.expect(&hurtbox_registering_error!(
-        "without `HurtboxShape` present"
+        " without `HurtboxShape` present"
     ));
-    let transform = transform.expect(&hurtbox_registering_error!("without `Transform` present"));
+    let transform = transform.expect(&hurtbox_registering_error!(" without `Transform` present"));
 
-    registry.last_local_position = transform.translation.xy();
-    registry.current_shape_bounding = shape.bounding();
-    registry.current_position = transform_helper
+    let last_local_position = transform.translation.xy();
+    let current_shape_bounding = shape.bounding();
+    let current_position = transform_helper
         .compute_global_transform(entity)
-        .expect("without `Transform` present on one of the parents of entity - unable to calculate global position")
-        .translation().xy();
+        .expect(
+            ", but hierarchy is malformed. \
+            See `bevy::transform::helper::ComputeGlobalTransformError::MalformedHierarchy`",
+        )
+        .translation()
+        .xy();
 
-    index.add_entity(entity, registry.current_aabb());
+    *registry = SpacialIndexRegistry {
+        current_shape_bounding,
+        current_position,
+        last_local_position,
+
+        last_shape_bounding: current_shape_bounding,
+        last_position: current_position,
+        marker: PhantomData,
+    };
+    index.add_entity(entity, registry.aabb());
 }
 
 fn on_remove_spacial_index_registry<Layer: LayerGroup>(
@@ -205,7 +233,7 @@ fn on_remove_spacial_index_registry<Layer: LayerGroup>(
 
     let registry = hurtboxes.get_mut(entity).unwrap();
 
-    index.remove_entity(entity, registry.current_aabb());
+    index.remove_entity(entity, registry.aabb());
 }
 
 fn update_spacial_index_registry<Layer: LayerGroup>(
@@ -224,7 +252,7 @@ fn update_spacial_index_registry<Layer: LayerGroup>(
         if hurtbox.is_changed() || position_change != Vec2::ZERO {
             registry.update(&hurtbox, transform);
 
-            spacial_index.change_entity(entity, registry.last_aabb(), registry.current_aabb());
+            spacial_index.change_entity(entity, registry.last_aabb(), registry.aabb());
         }
     }
 }

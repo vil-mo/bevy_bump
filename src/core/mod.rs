@@ -1,4 +1,4 @@
-use crate::core::collider::ColliderInteraction;
+use collider::ColliderInteraction;
 
 pub mod collisions_query;
 pub mod collider;

@@ -1,5 +1,7 @@
+use bevy::math::{Dir2, Vec2};
+
 use super::{collisions_query::CollisionsQuery, collider::Collider, ColliderGroup};
-use bevy::prelude::*;
+
 
 /// Collisions are accurate up to the DELTA distance
 const DELTA: f32 = 0.0001;
@@ -24,57 +26,11 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
     type AfterOutput: Iterator<Item = CollisionInformation<Group>>;
 
     fn next(self) -> RunningResponseVariant<Self, Group>;
-}
 
-enum CollisionsIteratorVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
-    BeforeOutput(T),
-    AfterOutput(T::AfterOutput),
-}
-
-pub struct CollisionsIterator<'a, T: RunningResponse<Group>, Group: ColliderGroup> {
-    buf: &'a mut Vec2,
-    current_iter: CollisionsIteratorVariant<T, Group>,
-}
-
-impl<'a, T: RunningResponse<Group>, Group: ColliderGroup> Iterator
-    for CollisionsIterator<'a, T, Group>
-{
-    type Item = CollisionInformation<Group>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use CollisionsIteratorVariant::*;
-        use RunningResponseVariant::*;
-
-        replace_with::replace_with_or_abort_and_return(&mut self.current_iter, |current_iter| {
-            match current_iter {
-                AfterOutput(mut iter) => (iter.next(), AfterOutput(iter)),
-
-                BeforeOutput(iter) => match iter.next() {
-                    Collision(item, next_iter) => (Some(item), BeforeOutput(next_iter)),
-                    ResultingOffset(value, mut next_iter) => {
-                        *self.buf = value;
-
-                        (next_iter.next(), AfterOutput(next_iter))
-                    }
-                },
-            }
-        })
-    }
-}
-
-pub trait RunningResponseImpl<Group: ColliderGroup>: RunningResponse<Group> {
-    fn into_iter(self, item: &mut Vec2) -> CollisionsIterator<Self, Group>;
-    fn until_resulting_offset(
-        self,
-        f: impl FnMut(CollisionInformation<Group>),
-    ) -> (Vec2, Self::AfterOutput);
-}
-
-impl<T: RunningResponse<Group>, Group: ColliderGroup> RunningResponseImpl<Group> for T {
-    fn into_iter(self, buf: &mut Vec2) -> CollisionsIterator<Self, Group> {
-        CollisionsIterator {
+    fn into_iter(self, buf: &mut Vec2) -> ResponseIterator<Self, Group> {
+        ResponseIterator {
             buf,
-            current_iter: CollisionsIteratorVariant::BeforeOutput(self),
+            current_iter: ResponseIteratorVariant::BeforeOutput(self),
         }
     }
 
@@ -94,6 +50,48 @@ impl<T: RunningResponse<Group>, Group: ColliderGroup> RunningResponseImpl<Group>
             }
         }
     }
+
+    fn foreach(self, f: impl FnMut(CollisionInformation<Group>)) -> Vec2 {
+        let mut buf = Vec2::ZERO;
+        self.into_iter(&mut buf).for_each(f);
+        buf
+    }
+}
+
+enum ResponseIteratorVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
+    BeforeOutput(T),
+    AfterOutput(T::AfterOutput),
+}
+
+pub struct ResponseIterator<'a, T: RunningResponse<Group>, Group: ColliderGroup> {
+    buf: &'a mut Vec2,
+    current_iter: ResponseIteratorVariant<T, Group>,
+}
+
+impl<'a, T: RunningResponse<Group>, Group: ColliderGroup> Iterator
+    for ResponseIterator<'a, T, Group>
+{
+    type Item = CollisionInformation<Group>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use ResponseIteratorVariant::*;
+        use RunningResponseVariant::*;
+
+        replace_with::replace_with_or_abort_and_return(&mut self.current_iter, |current_iter| {
+            match current_iter {
+                AfterOutput(mut iter) => (iter.next(), AfterOutput(iter)),
+
+                BeforeOutput(iter) => match iter.next() {
+                    Collision(item, next_iter) => (Some(item), BeforeOutput(next_iter)),
+                    ResultingOffset(value, mut next_iter) => {
+                        *self.buf = value;
+
+                        (next_iter.next(), AfterOutput(next_iter))
+                    }
+                },
+            }
+        })
+    }
 }
 
 #[inline(always)]
@@ -102,28 +100,28 @@ fn empty<Group: ColliderGroup>() -> std::iter::Empty<CollisionInformation<Group>
 }
 
 struct ImmediateResultingOffset<
-    Next: Iterator<Item = CollisionInformation<Group>>,
+    Collisions: Iterator<Item = CollisionInformation<Group>>,
     Group: ColliderGroup,
 > {
     offset: Vec2,
-    next: Next,
+    collisions: Collisions,
 }
 
-impl<Next: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
-    ImmediateResultingOffset<Next, Group>
+impl<Collisions: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
+    ImmediateResultingOffset<Collisions, Group>
 {
-    fn new(offset: Vec2, next: Next) -> Self {
-        ImmediateResultingOffset { offset, next }
+    fn new(offset: Vec2, collisions: Collisions) -> Self {
+        ImmediateResultingOffset { offset, collisions }
     }
 }
 
-impl<'a, Next: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
-    RunningResponse<Group> for ImmediateResultingOffset<Next, Group>
+impl<'a, Collisions: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
+    RunningResponse<Group> for ImmediateResultingOffset<Collisions, Group>
 {
-    type AfterOutput = Next;
+    type AfterOutput = Collisions;
 
     fn next(self) -> RunningResponseVariant<Self, Group> {
-        RunningResponseVariant::ResultingOffset(self.offset, self.next)
+        RunningResponseVariant::ResultingOffset(self.offset, self.collisions)
     }
 }
 
@@ -185,6 +183,9 @@ impl CollisionResponse for Pass {
         )
     }
 }
+
+
+// TODO: Implement responses
 
 // fn touch_point<Group: ColliderGroup, BF: BroadPhase<Group>>(
 //     colliders: &BF,

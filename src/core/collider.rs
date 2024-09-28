@@ -1,6 +1,5 @@
 use crate::utils::Bounded;
-use bevy::math::bounding::Aabb2d;
-use bevy::prelude::*;
+use bevy::math::{bounding::Aabb2d, Dir2, Vec2};
 
 /// Trait allows `Self` to perform collisions with `T`
 pub trait ColliderInteraction<T> {
