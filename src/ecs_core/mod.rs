@@ -7,7 +7,7 @@ use crate::{
     core::{collider::ColliderInteraction, ColliderGroup},
     utils::Bounded,
 };
-use bevy::{ecs::entity::Entity, math::bounding::Aabb2d};
+use bevy::{app::Update, ecs::{entity::Entity, schedule::ScheduleLabel}, math::bounding::Aabb2d, prelude::SystemSet};
 use layer::CollisionLayer;
 
 pub trait LayerGroup: CollisionLayer + Send + Sync + 'static {
@@ -22,3 +22,13 @@ impl<T: LayerGroup> ColliderGroup for T {
     type Hitbox = T::Hitbox;
     type Hurtbox = T::Hurtbox;
 }
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CollisionDetectionSet {
+    First,
+    Colliding,
+    Last,
+}
+
+/// Implements ScheduleLabel
+const COLLISION_DETECTION_SCHEDULE: Update = Update;

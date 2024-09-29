@@ -3,7 +3,7 @@ use super::{
     spacial_index::{SpacialIndex, SpacialIndexRegistry},
     LayerGroup,
 };
-use crate::core::{collider::Collider, collisions_query::CollisionsQuery, ColliderGroup};
+use crate::core::{collider::Collider, collisions_query::CollisionsQuery, response::{CollisionResponse, RunningResponse}, ColliderGroup};
 use crate::utils::Bounded;
 use bevy::ecs::{entity::EntityHashSet, system::SystemParam};
 use bevy::math::bounding::{Aabb2d, BoundingVolume};
@@ -44,22 +44,19 @@ impl<'w, 's, Layer: LayerGroup> CollisionCheck<'w, 's, Layer> {
         layer: &'a Layer,
     ) -> impl Iterator<Item = Entity> + 'a {
         let collisions = self.collisions_on_layer(layer);
-
         collisions.intersect(hitbox)
     }
 
-    // TODO: Implement
-    // pub fn check_movement<'a>(
-    //     &'a self,
-    //     hitbox: Collider<'a, Layer::Hitbox>,
-    //     offset: Vec2,
-    //     layer: &'a Layer,
-    //     response: impl CollisionResponse,
-    // ) {
-    //     let collisions = self.collisions_on_layer(layer);
-
-    //     collisions.cast(hitbox, offset)
-    // }
+    pub fn check_movement<'a>(
+        &'a self,
+        hitbox: Collider<'a, Layer::Hitbox>,
+        offset: Vec2,
+        layer: &'a Layer,
+        response: &'a mut impl CollisionResponse,
+    ) -> impl RunningResponse<Layer> + 'a {
+        let collisions = self.collisions_on_layer(layer);
+        response.respond(collisions, hitbox, offset)
+    }
 }
 
 pub struct CollisionsOnLayerAllowDuplication<'a, Layer: LayerGroup> {
@@ -84,7 +81,7 @@ impl<'a, Layer: LayerGroup> CollisionsOnLayerAllowDuplication<'a, Layer> {
     }
 
     fn iter_hurtboxes_on_aabb(
-        &self,
+        self,
         aabb: Aabb2d,
     ) -> impl Iterator<Item = (Collider<'a, Layer::Hurtbox>, Entity)> {
         self.collision_check

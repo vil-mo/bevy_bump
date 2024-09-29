@@ -119,11 +119,12 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
 #[derive(Component, Debug, Clone)]
 pub struct SpacialIndexRegistry<Layer: LayerGroup> {
     pub(crate) current_shape_bounding: Aabb2d,
+    /// Global position
     pub(crate) current_position: Vec2,
     last_shape_bounding: Aabb2d,
+    /// Local position
     last_position: Vec2,
 
-    last_local_position: Vec2,
     marker: PhantomData<Layer>,
 }
 
@@ -134,7 +135,6 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
             current_position: Vec2::NAN,
             last_shape_bounding: Aabb2d::new(Vec2::NAN, Vec2::NAN),
             last_position: Vec2::NAN,
-            last_local_position: Vec2::NAN,
             marker: PhantomData,
         }
     }
@@ -155,16 +155,11 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
         }
     }
 
-    fn update(&mut self, hurtbox: &HurtboxShape<Layer>, transform: &Transform) {
-        let current_local_position = transform.translation.xy();
-        let position_change = current_local_position - self.last_local_position;
-
-        let new_position = self.current_position + position_change;
+    fn update(&mut self, hurtbox: &HurtboxShape<Layer>, new_position: Vec2) {
         let new_shape_bounding = hurtbox.bounding();
 
         self.last_position = self.current_position;
         self.last_shape_bounding = self.current_shape_bounding;
-        self.last_local_position = current_local_position;
 
         self.current_position = new_position;
         self.current_shape_bounding = new_shape_bounding;
@@ -189,34 +184,26 @@ fn on_add_spacial_index_registry<Layer: LayerGroup>(
     mut hurtboxes: Query<(
         &mut SpacialIndexRegistry<Layer>,
         Option<&HurtboxShape<Layer>>,
-        Option<&Transform>,
     )>,
     transform_helper: TransformHelper,
 ) {
     let entity = trigger.entity();
 
-    let (mut registry, shape, transform) = hurtboxes.get_mut(entity).unwrap();
+    let (mut registry, shape) = hurtboxes.get_mut(entity).unwrap();
     let shape = shape.expect(&hurtbox_registering_error!(
         " without `HurtboxShape` present"
     ));
-    let transform = transform.expect(&hurtbox_registering_error!(" without `Transform` present"));
 
-    let last_local_position = transform.translation.xy();
     let current_shape_bounding = shape.bounding();
     let current_position = transform_helper
         .compute_global_transform(entity)
-        .expect(
-            ", but hierarchy is malformed. \
-            See `bevy::transform::helper::ComputeGlobalTransformError::MalformedHierarchy`",
-        )
+        .expect(", but there is a problem computing global position")
         .translation()
         .xy();
 
     *registry = SpacialIndexRegistry {
         current_shape_bounding,
         current_position,
-        last_local_position,
-
         last_shape_bounding: current_shape_bounding,
         last_position: current_position,
         marker: PhantomData,
@@ -241,17 +228,20 @@ fn update_spacial_index_registry<Layer: LayerGroup>(
         Entity,
         &mut SpacialIndexRegistry<Layer>,
         Ref<HurtboxShape<Layer>>,
-        &Transform,
     )>,
     mut spacial_index: ResMut<SpacialIndex<Layer>>,
+    transform_helper: TransformHelper,
 ) {
-    for (entity, mut registry, hurtbox, transform) in hurtboxes.iter_mut() {
-        let current_local_position = transform.translation.xy();
-        let position_change = current_local_position - registry.last_local_position;
+    for (entity, mut registry, hurtbox) in hurtboxes.iter_mut() {
+        let Ok(new_position) = transform_helper.compute_global_transform(entity) else {
+            warn!("Unable to compute global position of registered hurtbox of {entity}. Skipping hurtbox update.");
+            continue;
+        };
+        let new_position = new_position.translation().xy();
 
+        let position_change = registry.current_position - new_position;
         if hurtbox.is_changed() || position_change != Vec2::ZERO {
-            registry.update(&hurtbox, transform);
-
+            registry.update(&hurtbox, new_position);
             spacial_index.change_entity(entity, registry.last_aabb(), registry.aabb());
         }
     }

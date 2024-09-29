@@ -26,6 +26,14 @@ impl<Layer: LayerGroup> HitboxMonitoring<Layer> {
     }
 }
 
+impl<Layer: LayerGroup> Clone for HitboxMonitoring<Layer> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Layer: LayerGroup> Copy for HitboxMonitoring<Layer> {}
+
 #[derive(Deref)]
 pub struct HurtboxShape<Layer: LayerGroup>(pub Layer::Hurtbox);
 

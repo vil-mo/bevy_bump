@@ -1,13 +1,12 @@
 use bevy::math::{Dir2, Vec2};
 
-use super::{collisions_query::CollisionsQuery, collider::Collider, ColliderGroup};
-
+use super::{collider::Collider, collisions_query::CollisionsQuery, ColliderGroup};
 
 /// Collisions are accurate up to the DELTA distance
 const DELTA: f32 = 0.0001;
 
 /// Contains information about one of collisions that was processed with [`CollisionResponse`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct CollisionInformation<Group: ColliderGroup> {
     /// The point on the desired path (or on the path corrected by solver) at with collision was detected
     /// Should make sense for it to be [`Collider::position`] of actor that performed movement
@@ -16,6 +15,21 @@ pub struct CollisionInformation<Group: ColliderGroup> {
     pub normal: Dir2,
     pub data: Group::HurtboxData,
 }
+
+impl<Group: ColliderGroup> Clone for CollisionInformation<Group>
+where
+    Group::HurtboxData: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            global_position: self.global_position,
+            normal: self.normal,
+            data: self.data.clone(),
+        }
+    }
+}
+
+impl<Group: ColliderGroup> Copy for CollisionInformation<Group> where Group::HurtboxData: Copy {}
 
 pub enum RunningResponseVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
     Collision(CollisionInformation<Group>, T),
@@ -136,10 +150,10 @@ impl<'a, Collisions: Iterator<Item = CollisionInformation<Group>>, Group: Collid
 /// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
 pub trait CollisionResponse {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
         &'a mut self,
-        colliders: &'a Collisions,
-        actor: Collider<'a, Group::Hitbox>,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a;
 }
@@ -148,10 +162,10 @@ pub trait CollisionResponse {
 pub struct Ignore;
 
 impl CollisionResponse for Ignore {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
         &'a mut self,
-        _colliders: &'a Collisions,
-        _actor: Collider<'a, Group::Hitbox>,
+        _collisions: Collisions,
+        _hitbox: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a {
         ImmediateResultingOffset::new(offset, empty())
@@ -162,19 +176,19 @@ impl CollisionResponse for Ignore {
 pub struct Pass;
 
 impl CollisionResponse for Pass {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group>>(
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
         &'a mut self,
-        colliders: &'a Collisions,
-        actor: Collider<'a, Group::Hitbox>,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
         offset: Vec2,
     ) -> impl RunningResponse<Group> + 'a {
-        let position = actor.position;
+        let position = hitbox.position;
         let normal = offset.normalize();
 
         ImmediateResultingOffset::new(
             offset,
-            colliders
-                .cast(actor, offset)
+            collisions
+                .cast(hitbox, offset)
                 .map(move |(dist, norm, data)| CollisionInformation {
                     global_position: position + normal * dist,
                     normal: norm,
@@ -183,7 +197,6 @@ impl CollisionResponse for Pass {
         )
     }
 }
-
 
 // TODO: Implement responses
 
