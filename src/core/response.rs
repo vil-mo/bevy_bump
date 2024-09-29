@@ -7,8 +7,8 @@ const DELTA: f32 = 0.0001;
 
 /// Contains information about one of collisions that was processed with [`CollisionResponse`].
 #[derive(Debug)]
-pub struct CollisionInformation<Group: ColliderGroup> {
-    /// The point on the desired path (or on the path corrected by solver) at with collision was detected
+pub struct ResponseCollisionInformation<Group: ColliderGroup> {
+    /// The point on the desired path (or on the path corrected by solver) at wich collision was detected
     /// Should make sense for it to be [`Collider::position`] of actor that performed movement
     pub global_position: Vec2,
     /// Result of [`Collider::normal`] of body against which collision was detected
@@ -16,7 +16,7 @@ pub struct CollisionInformation<Group: ColliderGroup> {
     pub data: Group::HurtboxData,
 }
 
-impl<Group: ColliderGroup> Clone for CollisionInformation<Group>
+impl<Group: ColliderGroup> Clone for ResponseCollisionInformation<Group>
 where
     Group::HurtboxData: Clone,
 {
@@ -29,15 +29,18 @@ where
     }
 }
 
-impl<Group: ColliderGroup> Copy for CollisionInformation<Group> where Group::HurtboxData: Copy {}
+impl<Group: ColliderGroup> Copy for ResponseCollisionInformation<Group> where
+    Group::HurtboxData: Copy
+{
+}
 
 pub enum RunningResponseVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
-    Collision(CollisionInformation<Group>, T),
+    Collision(ResponseCollisionInformation<Group>, T),
     ResultingOffset(Vec2, T::AfterOutput),
 }
 
 pub trait RunningResponse<Group: ColliderGroup>: Sized {
-    type AfterOutput: Iterator<Item = CollisionInformation<Group>>;
+    type AfterOutput: Iterator<Item = ResponseCollisionInformation<Group>>;
 
     fn next(self) -> RunningResponseVariant<Self, Group>;
 
@@ -48,9 +51,15 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
         }
     }
 
+    fn ignore_resulting_offset(self) -> IgnoreResultingOffsetIterator<Self, Group> {
+        IgnoreResultingOffsetIterator {
+            curent_iter: ResponseIteratorVariant::BeforeOutput(self),
+        }
+    }
+
     fn until_resulting_offset(
         mut self,
-        mut f: impl FnMut(CollisionInformation<Group>),
+        mut f: impl FnMut(ResponseCollisionInformation<Group>),
     ) -> (Vec2, Self::AfterOutput) {
         use RunningResponseVariant::*;
 
@@ -65,7 +74,7 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
         }
     }
 
-    fn foreach(self, f: impl FnMut(CollisionInformation<Group>)) -> Vec2 {
+    fn foreach(self, f: impl FnMut(ResponseCollisionInformation<Group>)) -> Vec2 {
         let mut buf = Vec2::ZERO;
         self.into_iter(&mut buf).for_each(f);
         buf
@@ -85,7 +94,7 @@ pub struct ResponseIterator<'a, T: RunningResponse<Group>, Group: ColliderGroup>
 impl<'a, T: RunningResponse<Group>, Group: ColliderGroup> Iterator
     for ResponseIterator<'a, T, Group>
 {
-    type Item = CollisionInformation<Group>;
+    type Item = ResponseCollisionInformation<Group>;
 
     fn next(&mut self) -> Option<Self::Item> {
         use ResponseIteratorVariant::*;
@@ -93,8 +102,6 @@ impl<'a, T: RunningResponse<Group>, Group: ColliderGroup> Iterator
 
         replace_with::replace_with_or_abort_and_return(&mut self.current_iter, |current_iter| {
             match current_iter {
-                AfterOutput(mut iter) => (iter.next(), AfterOutput(iter)),
-
                 BeforeOutput(iter) => match iter.next() {
                     Collision(item, next_iter) => (Some(item), BeforeOutput(next_iter)),
                     ResultingOffset(value, mut next_iter) => {
@@ -103,25 +110,53 @@ impl<'a, T: RunningResponse<Group>, Group: ColliderGroup> Iterator
                         (next_iter.next(), AfterOutput(next_iter))
                     }
                 },
+
+                AfterOutput(mut iter) => (iter.next(), AfterOutput(iter)),
+            }
+        })
+    }
+}
+
+pub struct IgnoreResultingOffsetIterator<T: RunningResponse<Group>, Group: ColliderGroup> {
+    curent_iter: ResponseIteratorVariant<T, Group>,
+}
+
+impl<T: RunningResponse<Group>, Group: ColliderGroup> Iterator
+    for IgnoreResultingOffsetIterator<T, Group>
+{
+    type Item = ResponseCollisionInformation<Group>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use ResponseIteratorVariant::*;
+        use RunningResponseVariant::*;
+
+        replace_with::replace_with_or_abort_and_return(&mut self.curent_iter, |current_iter| {
+            match current_iter {
+                BeforeOutput(iter) => match iter.next() {
+                    Collision(item, next_iter) => (Some(item), BeforeOutput(next_iter)),
+                    ResultingOffset(_, mut next_iter) => (next_iter.next(), AfterOutput(next_iter)),
+                },
+
+                AfterOutput(mut iter) => (iter.next(), AfterOutput(iter)),
             }
         })
     }
 }
 
 #[inline(always)]
-fn empty<Group: ColliderGroup>() -> std::iter::Empty<CollisionInformation<Group>> {
+fn empty<Group: ColliderGroup>() -> std::iter::Empty<ResponseCollisionInformation<Group>> {
     std::iter::empty()
 }
 
 struct ImmediateResultingOffset<
-    Collisions: Iterator<Item = CollisionInformation<Group>>,
+    Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
     Group: ColliderGroup,
 > {
     offset: Vec2,
     collisions: Collisions,
 }
 
-impl<Collisions: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
+impl<Collisions: Iterator<Item = ResponseCollisionInformation<Group>>, Group: ColliderGroup>
     ImmediateResultingOffset<Collisions, Group>
 {
     fn new(offset: Vec2, collisions: Collisions) -> Self {
@@ -129,8 +164,11 @@ impl<Collisions: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGr
     }
 }
 
-impl<'a, Collisions: Iterator<Item = CollisionInformation<Group>>, Group: ColliderGroup>
-    RunningResponse<Group> for ImmediateResultingOffset<Collisions, Group>
+impl<
+        'a,
+        Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
+        Group: ColliderGroup,
+    > RunningResponse<Group> for ImmediateResultingOffset<Collisions, Group>
 {
     type AfterOutput = Collisions;
 
@@ -154,7 +192,8 @@ pub trait CollisionResponse {
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl RunningResponse<Group> + 'a;
 }
 
@@ -166,9 +205,10 @@ impl CollisionResponse for Ignore {
         &'a mut self,
         _collisions: Collisions,
         _hitbox: Collider<'a, Group::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl RunningResponse<Group> + 'a {
-        ImmediateResultingOffset::new(offset, empty())
+        ImmediateResultingOffset::new(offset_dir * offset_len, empty())
     }
 }
 
@@ -180,17 +220,17 @@ impl CollisionResponse for Pass {
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl RunningResponse<Group> + 'a {
         let position = hitbox.position;
-        let normal = offset.normalize();
 
         ImmediateResultingOffset::new(
-            offset,
+            offset_dir * offset_len,
             collisions
-                .cast(hitbox, offset)
-                .map(move |(dist, norm, data)| CollisionInformation {
-                    global_position: position + normal * dist,
+                .cast(hitbox, offset_dir, offset_len)
+                .map(move |(dist, norm, data)| ResponseCollisionInformation {
+                    global_position: position + offset_dir * dist,
                     normal: norm,
                     data,
                 }),

@@ -3,11 +3,18 @@ use super::{
     spacial_index::{SpacialIndex, SpacialIndexRegistry},
     LayerGroup,
 };
-use crate::core::{collider::Collider, collisions_query::CollisionsQuery, response::{CollisionResponse, RunningResponse}, ColliderGroup};
+use crate::core::{
+    collider::Collider,
+    collisions_query::CollisionsQuery,
+    response::{CollisionResponse, RunningResponse},
+    ColliderGroup,
+};
 use crate::utils::Bounded;
-use bevy::ecs::{entity::EntityHashSet, system::SystemParam};
-use bevy::math::bounding::{Aabb2d, BoundingVolume};
-use bevy::prelude::*;
+use bevy::{
+    ecs::{entity::EntityHashSet, system::SystemParam},
+    math::bounding::{Aabb2d, BoundingVolume},
+    prelude::*,
+};
 
 #[derive(SystemParam)]
 pub struct CollisionCheck<'w, 's, Layer: LayerGroup> {
@@ -50,12 +57,13 @@ impl<'w, 's, Layer: LayerGroup> CollisionCheck<'w, 's, Layer> {
     pub fn check_movement<'a>(
         &'a self,
         hitbox: Collider<'a, Layer::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
         layer: &'a Layer,
         response: &'a mut impl CollisionResponse,
     ) -> impl RunningResponse<Layer> + 'a {
         let collisions = self.collisions_on_layer(layer);
-        response.respond(collisions, hitbox, offset)
+        response.respond(collisions, hitbox, offset_dir, offset_len)
     }
 }
 
@@ -123,8 +131,11 @@ impl<Layer: LayerGroup> CollisionsQuery<Layer> for CollisionsOnLayerAllowDuplica
     fn cast(
         self,
         hitbox: Collider<<Layer as ColliderGroup>::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl Iterator<Item = (f32, Dir2, Entity)> {
+        let offset = offset_dir * offset_len;
+
         let aabb1 = hitbox.bounding();
         let aabb2 = Aabb2d {
             min: aabb1.min + offset,
@@ -134,7 +145,7 @@ impl<Layer: LayerGroup> CollisionsQuery<Layer> for CollisionsOnLayerAllowDuplica
 
         self.iter_hurtboxes_on_aabb(aabb)
             .filter_map(move |(other, data)| {
-                if let Some((dist, norm)) = hitbox.cast(other, offset) {
+                if let Some((dist, norm)) = hitbox.cast(other, offset_dir, offset_len) {
                     Some((dist, norm, data))
                 } else {
                     None
@@ -175,9 +186,11 @@ impl<Layer: LayerGroup> CollisionsQuery<Layer> for CollisionsOnLayer<'_, Layer> 
     fn cast(
         self,
         hitbox: Collider<Layer::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl Iterator<Item = (f32, Dir2, Entity)> {
         let mut deduplication_set = EntityHashSet::default();
+        let offset = offset_dir * offset_len;
 
         let aabb1 = hitbox.bounding();
         let aabb2 = Aabb2d {
@@ -190,7 +203,7 @@ impl<Layer: LayerGroup> CollisionsQuery<Layer> for CollisionsOnLayer<'_, Layer> 
             .iter_hurtboxes_on_aabb(aabb)
             .filter(move |(_, entity)| deduplication_set.insert(*entity))
             .filter_map(move |(other, data)| {
-                if let Some((dist, norm)) = hitbox.cast(other, offset) {
+                if let Some((dist, norm)) = hitbox.cast(other, offset_dir, offset_len) {
                     Some((dist, norm, data))
                 } else {
                     None

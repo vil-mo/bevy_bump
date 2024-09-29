@@ -14,7 +14,8 @@ pub trait ColliderInteraction<T> {
         self_position: Vec2,
         other: &T,
         other_position: Vec2,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> Option<(f32, Dir2)>;
 }
 
@@ -47,12 +48,22 @@ impl<'a, S> Collider<'a, S> {
         self.shape
             .intersect(self.position, other.shape, other.position)
     }
-    pub fn cast<O>(&self, other: Collider<'a, O>, offset: Vec2) -> Option<(f32, Dir2)>
+    pub fn cast<O>(
+        &self,
+        other: Collider<'a, O>,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> Option<(f32, Dir2)>
     where
         S: ColliderInteraction<O>,
     {
-        self.shape
-            .cast(self.position, other.shape, other.position, offset)
+        self.shape.cast(
+            self.position,
+            other.shape,
+            other.position,
+            offset_dir,
+            offset_len,
+        )
     }
 }
 

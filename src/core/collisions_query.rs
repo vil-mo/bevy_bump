@@ -1,5 +1,5 @@
-use bevy::math::{Dir2, Vec2};
 use super::{collider::Collider, ColliderGroup};
+use bevy::math::Dir2;
 
 /// BroadPhase returns iterators over
 pub trait CollisionsQuery<Group: ColliderGroup>: Copy {
@@ -13,6 +13,7 @@ pub trait CollisionsQuery<Group: ColliderGroup>: Copy {
     fn cast(
         self,
         hitbox: Collider<Group::Hitbox>,
-        offset: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
     ) -> impl Iterator<Item = (f32, Dir2, Group::HurtboxData)>;
 }

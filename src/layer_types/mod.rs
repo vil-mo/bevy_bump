@@ -1,8 +1,12 @@
+pub mod collision_report_strategy;
 mod scanner;
 
 use bevy::prelude::*;
 
 pub use scanner::*;
+
+/// Implements ScheduleLabel
+const COLLISION_DETECTION_SCHEDULE: Update = Update;
 
 pub trait BumpAppExtension {
     fn add_scanner_group<T: ScannerGroup>(&mut self) -> &mut Self;

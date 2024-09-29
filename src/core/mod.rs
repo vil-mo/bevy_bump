@@ -1,7 +1,7 @@
 use collider::ColliderInteraction;
 
-pub mod collisions_query;
 pub mod collider;
+pub mod collisions_query;
 pub mod response;
 
 /// Trait allows for easier to read generic code

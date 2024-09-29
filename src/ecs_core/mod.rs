@@ -7,7 +7,7 @@ use crate::{
     core::{collider::ColliderInteraction, ColliderGroup},
     utils::Bounded,
 };
-use bevy::{app::Update, ecs::{entity::Entity, schedule::ScheduleLabel}, math::bounding::Aabb2d, prelude::SystemSet};
+use bevy::{app::Update, ecs::entity::Entity, math::bounding::Aabb2d, prelude::SystemSet};
 use layer::CollisionLayer;
 
 pub trait LayerGroup: CollisionLayer + Send + Sync + 'static {
@@ -29,6 +29,3 @@ pub enum CollisionDetectionSet {
     Colliding,
     Last,
 }
-
-/// Implements ScheduleLabel
-const COLLISION_DETECTION_SCHEDULE: Update = Update;

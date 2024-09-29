@@ -78,8 +78,6 @@ where
     return right;
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::{binary_search, insertion_sort};
