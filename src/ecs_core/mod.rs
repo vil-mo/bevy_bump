@@ -4,23 +4,22 @@ pub mod layer;
 pub mod spacial_index;
 
 use crate::{
-    core::{collider::ColliderInteraction, ColliderGroup},
+    core::ColliderGroup,
     utils::Bounded,
 };
-use bevy::{app::Update, ecs::entity::Entity, math::bounding::Aabb2d, prelude::SystemSet};
+use bevy::{ecs::entity::Entity, math::bounding::Aabb2d, prelude::SystemSet};
 use layer::CollisionLayer;
 
-pub trait LayerGroup: CollisionLayer + Send + Sync + 'static {
-    /// Actor that is colliding
-    type Hitbox: ColliderInteraction<Self::Hurtbox> + Bounded<Aabb2d> + Send + Sync + 'static;
-    /// Bodies that generate collisions and usually stop actor's movement
-    type Hurtbox: Bounded<Aabb2d> + Send + Sync + 'static;
-}
-
-impl<T: LayerGroup> ColliderGroup for T {
-    type HurtboxData = Entity;
-    type Hitbox = T::Hitbox;
-    type Hurtbox = T::Hurtbox;
+pub trait LayerGroup:
+    ColliderGroup<
+        HurtboxData = Entity,
+        Hitbox: Bounded<Aabb2d> + Send + Sync,
+        Hurtbox: Bounded<Aabb2d> + Send + Sync,
+    > + CollisionLayer
+    + Send
+    + Sync
+    + 'static
+{
 }
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]

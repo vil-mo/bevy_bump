@@ -1,34 +1,26 @@
 use crate::{
     core::{
-        collider::{Collider, ColliderInteraction},
+        collider::Collider,
         response::{Pass, RunningResponse},
     },
     ecs_core::{
         collision_check::CollisionCheck,
         components::{HitboxLayer, HitboxMonitoring, HitboxShape},
-        layer::CollisionLayer,
         CollisionDetectionSet, LayerGroup,
     },
     layer_types::collision_report_strategy::CollisionInformation,
-    utils::Bounded,
 };
-use bevy::{ecs::system::StaticSystemParam, math::bounding::Aabb2d, prelude::*};
+use bevy::{ecs::system::StaticSystemParam, prelude::*};
 
 use super::collision_report_strategy::CollisionReportStrategy;
 
-pub trait ScannerGroup: CollisionLayer + Send + Sync + 'static {
-    type Hitbox: ColliderInteraction<Self::Hurtbox> + Bounded<Aabb2d> + Send + Sync + 'static;
-    type Hurtbox: Bounded<Aabb2d> + Send + Sync + 'static;
-
+pub trait ScannerGroup: LayerGroup {
     type ReportStrategy: CollisionReportStrategy;
 }
 
-impl<T: ScannerGroup> LayerGroup for T {
-    type Hitbox = T::Hitbox;
-    type Hurtbox = T::Hurtbox;
-}
-
 pub(super) fn register_scanner_group<T: ScannerGroup>(app: &mut App) {
+    T::ReportStrategy::register::<T>(app);
+
     app.add_systems(
         super::COLLISION_DETECTION_SCHEDULE,
         collide_scanner_group::<T>.in_set(CollisionDetectionSet::Colliding),
@@ -73,7 +65,7 @@ fn remove_scanner_last_position<Layer: ScannerGroup>(
 
 fn collide_scanner_group<T: ScannerGroup>(
     collision_check: CollisionCheck<T>,
-    mut query: Query<(
+    mut hitboxes: Query<(
         Entity,
         &mut ScannerHitboxLastPosition<T>,
         &HitboxShape<T>,
@@ -84,9 +76,9 @@ fn collide_scanner_group<T: ScannerGroup>(
 
     mut report_param: StaticSystemParam<<T::ReportStrategy as CollisionReportStrategy>::Param<T>>,
 ) {
-    for (entity, mut last_position, shape, layer, monitoring) in query.iter_mut() {
-        let Ok(new_position) = transform_helper.compute_global_transform(entity) else {
-            warn!("Unable to compute global position of registered scanner of {entity}. Skipping scanner update.");
+    for (hitbox_entity, mut last_position, shape, layer, monitoring) in hitboxes.iter_mut() {
+        let Ok(new_position) = transform_helper.compute_global_transform(hitbox_entity) else {
+            warn!("Unable to compute global position of registered scanner of {hitbox_entity}. Skipping scanner update.");
             continue;
         };
         let new_position = new_position.translation().xy();
@@ -102,22 +94,30 @@ fn collide_scanner_group<T: ScannerGroup>(
                 collision_check
                     .check_movement(hitbox, offset_dir, offset_len, &layer.0, &mut pass)
                     .ignore_resulting_offset()
-                    .map(Into::into)
+                    .map(|x| {
+                        CollisionInformation::from_response::<T>(
+                            hitbox_entity,
+                            x,
+                        )
+                    })
                     .into_iter0()
             } else {
-                std::iter::once(CollisionInformation {
-                    global_position: new_position,
-                    entity,
-                    normal: None,
-                })
-                .into_iter1()
+                collision_check
+                    .check_intersection(hitbox, &layer.0)
+                    .map(|hurtbox| CollisionInformation {
+                        hitbox: hitbox_entity,
+                        global_position: new_position,
+                        hurtbox,
+                        normal: None,
+                    })
+                    .into_iter1()
             }
             .into_iter0()
         } else {
             std::iter::empty::<CollisionInformation>().into_iter1()
         };
 
-        T::ReportStrategy::report_collisions(entity, collisions, &mut report_param);
+        T::ReportStrategy::report_collisions(collisions, &mut report_param);
 
         last_position.0 = new_position;
     }

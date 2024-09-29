@@ -34,11 +34,6 @@ impl<Group: ColliderGroup> Copy for ResponseCollisionInformation<Group> where
 {
 }
 
-pub enum RunningResponseVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
-    Collision(ResponseCollisionInformation<Group>, T),
-    ResultingOffset(Vec2, T::AfterOutput),
-}
-
 pub trait RunningResponse<Group: ColliderGroup>: Sized {
     type AfterOutput: Iterator<Item = ResponseCollisionInformation<Group>>;
 
@@ -79,6 +74,11 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
         self.into_iter(&mut buf).for_each(f);
         buf
     }
+}
+
+pub enum RunningResponseVariant<T: RunningResponse<Group>, Group: ColliderGroup> {
+    Collision(ResponseCollisionInformation<Group>, T),
+    ResultingOffset(Vec2, T::AfterOutput),
 }
 
 enum ResponseIteratorVariant<T: RunningResponse<Group>, Group: ColliderGroup> {

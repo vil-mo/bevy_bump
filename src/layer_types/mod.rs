@@ -1,5 +1,6 @@
 pub mod collision_report_strategy;
 mod scanner;
+mod velocity;
 
 use bevy::prelude::*;
 

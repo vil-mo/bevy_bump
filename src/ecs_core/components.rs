@@ -1,9 +1,10 @@
 use super::{spacial_index::SpacialIndexRegistry, LayerGroup};
-use bevy::{ecs::world::DeferredWorld, prelude::*};
+use bevy::{
+    ecs::world::DeferredWorld,
+    prelude::*,
+};
 use std::marker::PhantomData;
 
-#[derive(Reflect, Component, Copy, Clone, Default, PartialEq, Debug, Deref, DerefMut)]
-pub struct Velocity(pub Vec2);
 
 #[derive(Component, Deref)]
 pub struct HitboxShape<Layer: LayerGroup>(pub Layer::Hitbox);
@@ -93,14 +94,14 @@ impl<Layer: LayerGroup> RegisterHurtbox<Layer> {
     }
 }
 
-/// Don't forget user can remove necessary components before applying commands
 fn register_hurtbox<Layer: LayerGroup>(
     to_register: Query<
         Entity,
         (
             With<RegisterHurtbox<Layer>>,
             With<HurtboxLayer<Layer>>,
-            With<HurtboxMonitorable<Layer>>,
+            With<HurtboxShape<Layer>>,
+            With<Transform>,
         ),
     >,
     mut commands: Commands,
@@ -108,7 +109,27 @@ fn register_hurtbox<Layer: LayerGroup>(
     for entity in to_register.iter() {
         commands
             .entity(entity)
-            .insert(SpacialIndexRegistry::<Layer>::not_valid());
+            .add(|entity: Entity, world: &mut World| {
+                // Until command is appled to the world, user can remove necessary components
+                // So we need to check before inserting
+
+                let mut entity_mut = world.entity_mut(entity);
+                if !entity_mut.contains::<RegisterHurtbox<Layer>>() {
+                    return;
+                }
+                entity_mut.remove::<RegisterHurtbox<Layer>>();
+
+                if entity_mut.contains::<SpacialIndexRegistry<Layer>>() {
+                    return;
+                }
+
+                if entity_mut.contains::<HurtboxLayer<Layer>>()
+                    && entity_mut.contains::<HurtboxShape<Layer>>()
+                    && entity_mut.contains::<Transform>()
+                {
+                    entity_mut.insert(SpacialIndexRegistry::<Layer>::not_valid());
+                }
+            });
     }
 }
 
