@@ -34,6 +34,19 @@ impl<Group: ColliderGroup> Copy for ResponseCollisionInformation<Group> where
 {
 }
 
+impl<Group: ColliderGroup> ResponseCollisionInformation<Group> {
+    fn from_cast(
+        position: Vec2,
+        direction: Dir2,
+    ) -> impl FnMut((f32, Dir2, Group::HurtboxData)) -> Self {
+        move |(dist, normal, data)| Self {
+            global_position: position + direction * (dist - DELTA),
+            normal,
+            data,
+        }
+    }
+}
+
 pub trait RunningResponse<Group: ColliderGroup>: Sized {
     type AfterOutput: Iterator<Item = ResponseCollisionInformation<Group>>;
 
@@ -148,7 +161,7 @@ fn empty<Group: ColliderGroup>() -> std::iter::Empty<ResponseCollisionInformatio
     std::iter::empty()
 }
 
-struct ImmediateResultingOffset<
+pub struct ImmediateResultingOffset<
     Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
     Group: ColliderGroup,
 > {
@@ -164,16 +177,33 @@ impl<Collisions: Iterator<Item = ResponseCollisionInformation<Group>>, Group: Co
     }
 }
 
-impl<
-        'a,
-        Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
-        Group: ColliderGroup,
-    > RunningResponse<Group> for ImmediateResultingOffset<Collisions, Group>
+impl<Collisions: Iterator<Item = ResponseCollisionInformation<Group>>, Group: ColliderGroup>
+    RunningResponse<Group> for ImmediateResultingOffset<Collisions, Group>
 {
     type AfterOutput = Collisions;
 
     fn next(self) -> RunningResponseVariant<Self, Group> {
         RunningResponseVariant::ResultingOffset(self.offset, self.collisions)
+    }
+}
+
+pub struct LazyResponse<
+    F: FnOnce() -> (Vec2, Collisions),
+    Group: ColliderGroup,
+    Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
+>(pub F);
+
+impl<
+        F: FnOnce() -> (Vec2, Collisions),
+        Group: ColliderGroup,
+        Collisions: Iterator<Item = ResponseCollisionInformation<Group>>,
+    > RunningResponse<Group> for LazyResponse<F, Group, Collisions>
+{
+    type AfterOutput = Collisions;
+
+    fn next(self) -> RunningResponseVariant<Self, Group> {
+        let (offset, collisions) = self.0();
+        RunningResponseVariant::ResultingOffset(offset, collisions)
     }
 }
 
@@ -223,144 +253,190 @@ impl CollisionResponse for Pass {
         offset_dir: Dir2,
         offset_len: f32,
     ) -> impl RunningResponse<Group> + 'a {
-        let position = hitbox.position;
-
         ImmediateResultingOffset::new(
             offset_dir * offset_len,
-            collisions
-                .cast(hitbox, offset_dir, offset_len)
-                .map(move |(dist, norm, data)| ResponseCollisionInformation {
-                    global_position: position + offset_dir * dist,
-                    normal: norm,
-                    data,
-                }),
+            collisions.cast(hitbox, offset_dir, offset_len).map(
+                ResponseCollisionInformation::from_cast(hitbox.position, offset_dir),
+            ),
         )
     }
 }
 
-// TODO: Implement responses
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Touch;
 
-// fn touch_point<Group: ColliderGroup, BF: BroadPhase<Group>>(
-//     colliders: &BF,
-//     actor: &Group::Hitbox,
-//     offset: Vec2,
-// ) -> (Vec2, Option<(CollisionInformation, Group::ColliderData)>) {
-//     let mut res = None;
-//     let offset_normal = offset.normalize();
-//     let position = actor.position();
-//
-//     for (collider, data) in colliders.cast(actor, offset) {
-//         let dist = actor.cast(collider, offset);
-//
-//         if let Some((dist, normal)) = dist {
-//             if let Some((old_dist, _, _)) = res {
-//                 if old_dist > dist {
-//                     res = Some((dist, normal, data));
-//                 }
-//             } else {
-//                 res = Some((dist, normal, data));
-//             }
-//         }
-//     }
-//
-//     if let Some((distance, normal, data)) = res {
-//         let actual_offset = offset_normal * (distance - DELTA);
-//         (
-//             actual_offset,
-//             Some((
-//                 CollisionInformation {
-//                     point: actual_offset + position,
-//                     normal,
-//                 },
-//                 data,
-//             )),
-//         )
-//     } else {
-//         (offset, None)
-//     }
-// }
-//
-// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct Touch;
-// impl CollisionResponse for Touch {
-//     fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
-//         &mut self,
-//         colliders: &BF,
-//         actor: &Group::Hitbox,
-//         offset: Vec2,
-//     ) -> ResponseResult<Group> {
-//         let (offset, collider) = touch_point(colliders, actor, offset);
-//
-//         ResponseResult::new(offset, collider.into_iter().collect())
-//     }
-// }
-//
-// fn trajectory_change_on_touch<Group: ColliderGroup, BF: BroadPhase<Group>>(
-//     colliders: &BF,
-//     actor: &Group::Hitbox,
-//     offset: Vec2,
-//     // (movement that was supposed to be made, but stopped, normal of the collision) -> new movement from position where were stopped
-//     mut new_trajectory: impl FnMut(Vec2, Dir2) -> Vec2,
-// ) -> ResponseResult<Group, BF> {
-//     let mut res_vec = Vec::new();
-//
-//     let mut last_offset = offset;
-//     let (mut new_offset, mut opt_info) = touch_point(colliders, actor, offset);
-//
-//     let mut actor = actor.clone();
-//
-//     while let Some((info, data)) = opt_info {
-//         actor.set_position(info.point);
-//
-//         let diff_offset = last_offset - new_offset;
-//
-//         last_offset = new_trajectory(diff_offset, info.normal);
-//         (new_offset, opt_info) = touch_point(colliders, &actor, last_offset);
-//
-//         res_vec.push((info, data));
-//     }
-//
-//     (actor.position() + new_offset, res_vec)
-// }
-//
-// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct Slide;
-//
-// impl CollisionResponse for Slide {
-//     fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
-//         &mut self,
-//         colliders: &BF,
-//         actor: &Group::Hitbox,
-//         offset: Vec2,
-//     ) -> ResponseResult<Group, BF> {
-//         trajectory_change_on_touch(colliders, actor, offset, |left_movement, normal| {
-//             left_movement.project_onto_normalized(normal.perp())
-//         })
-//     }
-// }
-//
-// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct Bounce;
-//
-// impl CollisionResponse for Bounce {
-//     fn respond<Group: ColliderGroup, BF: BroadPhase<Group>>(
-//         &mut self,
-//         colliders: &BF,
-//         actor: &Group::Hitbox,
-//         offset: Vec2,
-//     ) -> ResponseResult<Group, BF> {
-//         trajectory_change_on_touch(colliders, actor, offset, |left_movement, normal| {
-//             left_movement - 2.0 * left_movement.project_onto_normalized(*normal)
-//         })
-//     }
-// }
-//
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct LimitedBounce(pub u32);
-//
-// impl LimitedBounce {
-//     #[inline]
-//     pub fn new(bounces: u32) -> Self {
-//         Self(bounces)
-//     }
-// }
+impl CollisionResponse for Touch {
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+        &'a mut self,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> impl RunningResponse<Group> + 'a {
+        let mut min_distance = offset_len;
+        let mut resulting_collision = None;
+
+        LazyResponse(move || {
+            for collision in collisions.cast(hitbox, offset_dir, offset_len) {
+                if min_distance >= collision.0 {
+                    min_distance = collision.0;
+                    resulting_collision = Some(ResponseCollisionInformation::from_cast(
+                        hitbox.position,
+                        offset_dir,
+                    )(collision));
+                }
+            }
+
+            (offset_dir * min_distance, resulting_collision.into_iter())
+        })
+    }
+}
+
+pub fn trajectory_change_on_touch<
+    'a,
+    F: FnMut(Vec2, Dir2) -> Vec2,
+    Group: ColliderGroup,
+    Collisions: CollisionsQuery<Group>,
+>(
+    collisions: Collisions,
+    mut hitbox: Collider<'a, Group::Hitbox>,
+    offset_dir: Dir2,
+    offset_len: f32,
+    mut trajectory_change: F,
+) -> (
+    Vec2,
+    std::vec::IntoIter<ResponseCollisionInformation<Group>>,
+) {
+    // Vector with all collisions
+    let mut res_vec = Vec::new();
+
+    // We want to move that distance
+    let mut desired_offset = offset_dir * offset_len;
+
+    // We actually moved that distance
+    let mut actual_offset = Vec2::ZERO;
+    // Moving that distance, checking if we collide
+    let mut opt_collision_information = Touch
+        .respond(collisions, hitbox, offset_dir, offset_len)
+        .into_iter(&mut actual_offset)
+        .next();
+
+    // While we collide
+    while let Some(collision_information) = opt_collision_information {
+        let normal = collision_information.normal;
+        // Register the fact we collided
+        res_vec.push(collision_information);
+
+        // Move hitbox that distance
+        hitbox.position += actual_offset;
+
+        // Trajectory change takes difference between desired and actual offset, and normal of the collision
+        let diff_offset = desired_offset - actual_offset;
+        desired_offset = (trajectory_change)(diff_offset, normal);
+
+        // If desired offset is zero, we are done
+        let Ok((desired_dir, desired_len)) = Dir2::new_and_length(desired_offset) else {
+            break;
+        };
+
+        // If not zero, check if colliding agin, with once again setting actual offset
+        opt_collision_information = Touch
+            .respond(collisions, hitbox, desired_dir, desired_len)
+            .into_iter(&mut actual_offset)
+            .next();
+    }
+
+    (actual_offset, res_vec.into_iter())
+}
+
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Slide;
+
+impl CollisionResponse for Slide {
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+        &'a mut self,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> impl RunningResponse<Group> + 'a {
+        LazyResponse(move || {
+            trajectory_change_on_touch(
+                collisions,
+                hitbox,
+                offset_dir,
+                offset_len,
+                |left_movement, normal| left_movement.project_onto_normalized(normal.perp()),
+            )
+        })
+    }
+}
+
+fn bounce(left_movement: Vec2, normal: Dir2) -> Vec2 {
+    left_movement - 2.0 * left_movement.project_onto_normalized(*normal)
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Bounce;
+
+impl CollisionResponse for Bounce {
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+        &'a mut self,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> impl RunningResponse<Group> + 'a {
+        LazyResponse(move || {
+            trajectory_change_on_touch(collisions, hitbox, offset_dir, offset_len, bounce)
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LimitedBounce<NextResponse: CollisionResponse> {
+    pub bounces: u32,
+    pub next_response: NextResponse,
+}
+
+impl<NextResponse: CollisionResponse> LimitedBounce<NextResponse> {
+    #[inline]
+    pub fn new(bounces: u32, next_response: NextResponse) -> Self {
+        Self {
+            bounces,
+            next_response,
+        }
+    }
+}
+
+
+impl CollisionResponse for LimitedBounce<Ignore> {
+    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+        &'a mut self,
+        collisions: Collisions,
+        hitbox: Collider<'a, Group::Hitbox>,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> impl RunningResponse<Group> + 'a {
+        LazyResponse(move || {
+            let mut outer_left_movement = Vec2::ZERO;
+            let (offset, collisions) = trajectory_change_on_touch(
+                collisions,
+                hitbox,
+                offset_dir,
+                offset_len,
+                |left_movement, normal| {
+                    if self.bounces == 0 {
+                        outer_left_movement = left_movement;
+                        return Vec2::ZERO;
+                    }
+                    self.bounces -= 1;
+                    bounce(left_movement, normal)
+                },
+            );
+
+            (offset + outer_left_movement, collisions)
+        })
+    }
+}

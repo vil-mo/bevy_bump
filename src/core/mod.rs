@@ -5,7 +5,7 @@ pub mod collisions_query;
 pub mod response;
 
 /// Trait allows for easier to read generic code
-pub trait ColliderGroup: 'static {
+pub trait ColliderGroup: Sized + 'static {
     type HurtboxData;
 
     /// Actor that is colliding

@@ -8,12 +8,12 @@ use crate::{
 use super::collision_report_strategy::CollisionReportStrategy;
 
 pub trait VelocityGroup: LayerGroup {
-    type ReportStrategy: CollisionReportStrategy;
+    type ReportStrategy: CollisionReportStrategy<Self>;
     type Response: CollisionResponse;
 }
 
 pub(super) fn register_velocity_group<T: VelocityGroup>(app: &mut App) {
-    T::ReportStrategy::register::<T>(app);
+    T::ReportStrategy::register(app);
 
     app.add_systems(
         super::COLLISION_DETECTION_SCHEDULE,

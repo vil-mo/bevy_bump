@@ -15,11 +15,11 @@ use bevy::{ecs::system::StaticSystemParam, prelude::*};
 use super::collision_report_strategy::CollisionReportStrategy;
 
 pub trait ScannerGroup: LayerGroup {
-    type ReportStrategy: CollisionReportStrategy;
+    type ReportStrategy: CollisionReportStrategy<Self>;
 }
 
 pub(super) fn register_scanner_group<T: ScannerGroup>(app: &mut App) {
-    T::ReportStrategy::register::<T>(app);
+    T::ReportStrategy::register(app);
 
     app.add_systems(
         super::COLLISION_DETECTION_SCHEDULE,
@@ -74,7 +74,7 @@ fn collide_scanner_group<T: ScannerGroup>(
     )>,
     transform_helper: TransformHelper,
 
-    mut report_param: StaticSystemParam<<T::ReportStrategy as CollisionReportStrategy>::Param<T>>,
+    mut report_param: StaticSystemParam<<T::ReportStrategy as CollisionReportStrategy<T>>::Param>,
 ) {
     for (hitbox_entity, mut last_position, shape, layer, monitoring) in hitboxes.iter_mut() {
         let Ok(new_position) = transform_helper.compute_global_transform(hitbox_entity) else {
