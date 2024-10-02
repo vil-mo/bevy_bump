@@ -2,9 +2,6 @@ use bevy::math::{Dir2, Vec2};
 
 use super::{collider::Collider, collisions_query::CollisionsQuery, ColliderGroup};
 
-/// Collisions are accurate up to the DELTA distance
-const DELTA: f32 = 0.0001;
-
 /// Contains information about one of collisions that was processed with [`CollisionResponse`].
 #[derive(Debug)]
 pub struct ResponseCollisionInformation<Group: ColliderGroup> {
@@ -40,7 +37,7 @@ impl<Group: ColliderGroup> ResponseCollisionInformation<Group> {
         direction: Dir2,
     ) -> impl FnMut((f32, Dir2, Group::HurtboxData)) -> Self {
         move |(dist, normal, data)| Self {
-            global_position: position + direction * (dist - DELTA),
+            global_position: position + direction * dist,
             normal,
             data,
         }
