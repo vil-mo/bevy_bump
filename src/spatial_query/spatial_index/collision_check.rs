@@ -1,6 +1,6 @@
 use super::{
     components::{HurtboxLayer, HurtboxMonitorable, HurtboxShape},
-    spacial_index::{SpacialIndex, SpacialIndexRegistry},
+    spatial_index::{SpacialIndex, SpacialIndexRegistry},
     LayerGroup,
 };
 use crate::core::{
@@ -9,7 +9,7 @@ use crate::core::{
     response::{CollisionResponse, RunningResponse},
     ColliderGroup,
 };
-use crate::utils::Bounded;
+use crate::bounded::Bounded;
 use bevy::{
     ecs::{entity::EntityHashSet, system::SystemParam},
     math::bounding::{Aabb2d, BoundingVolume},

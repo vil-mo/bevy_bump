@@ -1,5 +1,6 @@
-use super::{components::HurtboxShape, LayerGroup};
-use crate::utils::Bounded;
+use super::components::HurtboxShape;
+use crate::core::ColliderGroup;
+use crate::bounded::Bounded;
 use bevy::math::bounding::Aabb2d;
 use bevy::utils::HashMap;
 use bevy::{
@@ -8,24 +9,49 @@ use bevy::{
 };
 use std::marker::PhantomData;
 
-// TODO: Make private
-pub fn register_index<Layer: LayerGroup>(app: &mut App, pixels_per_chunk: f32) {
-    app.insert_resource(SpacialIndex::<Layer>::new(pixels_per_chunk));
+const PIXELS_PER_CHUNK_DEFAULT: f32 = 100.;
 
-    app.add_systems(PostUpdate, update_spacial_index_registry::<Layer>);
-    app.observe(on_add_spacial_index_registry::<Layer>)
-        .observe(on_remove_spacial_index_registry::<Layer>);
+pub struct SpacialIndexPlugin<Group: ColliderGroup> {
+    pub pixels_per_chunk: f32,
+
+    marker: PhantomData<Group>,
 }
 
-/// Entities with [`ColliderAabb`]s sorted along an axis by their extents.
+impl<Group: ColliderGroup> Default for SpacialIndexPlugin<Group> {
+    fn default() -> Self {
+        Self::new(PIXELS_PER_CHUNK_DEFAULT)
+    }
+}
+
+impl<Group: ColliderGroup> SpacialIndexPlugin<Group> {
+    pub fn new(pixels_per_chunk: f32) -> Self {
+        SpacialIndexPlugin {
+            pixels_per_chunk,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Group: ColliderGroup> Plugin for SpacialIndexPlugin<Group> {
+    fn build(&self, app: &mut App) {
+        app.add_resource(SpacialIndex::<Group>::new(self.pixels_per_chunk));
+    }
+}
+
 #[derive(Resource)]
-pub struct SpacialIndex<Layer: LayerGroup> {
-    pub(crate) chunks: HashMap<IVec2, Vec<Entity>>,
-    pub(crate) pixels_per_chunk: f32,
-    pd: PhantomData<Layer>,
+pub struct SpacialIndex<Group: ColliderGroup> {
+    chunks: HashMap<IVec2, Vec<Entity>>,
+    pixels_per_chunk: f32,
+    marker: PhantomData<Group>,
 }
 
-impl<Layer: LayerGroup> MapEntities for SpacialIndex<Layer> {
+impl<Group: ColliderGroup> Default for SpacialIndex<Group> {
+    fn default() -> Self {
+        Self::new(PIXELS_PER_CHUNK_DEFAULT)
+    }
+}
+
+impl<Group: ColliderGroup> MapEntities for SpacialIndex<Group> {
     fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
         for (_, chunk) in self.chunks.iter_mut() {
             for entity in chunk.iter_mut() {
@@ -51,29 +77,42 @@ fn chunk_to_global(pixels_per_chunk: f32, chunk: IVec2) -> Vec2 {
     }
 }
 
-impl<Layer: LayerGroup> SpacialIndex<Layer> {
+impl<Group: ColliderGroup> SpacialIndex<Group> {
+    /// Creates a new spacial index.
+    /// # Arguments
+    /// * `pixels_per_chunk` - Spacial index is divided into chunks of size `pixels_per_chunk`.
+    ///   Every hurtbox, Aabb2d of which is intersected with the chunk, is added to the chunk.
+    ///   This is done to reduce the number of collision checks, only neccessary chunks are iterated.
+    ///   Generally, this should match size of the colliders for best performance,
+    ///   but this really depends on lots of factors.   
     pub fn new(pixels_per_chunk: f32) -> Self {
         SpacialIndex {
-            // TODO: fix placeholder numbers
             chunks: HashMap::default(),
             pixels_per_chunk,
-            pd: PhantomData,
+            marker: PhantomData,
         }
     }
 
-    /// Coordinates of the chunk in which the `global` lies in
+    /// Coordinates of the chunk in which the `global` lies in.
     #[inline]
     pub fn global_to_chunk(&self, global: Vec2) -> IVec2 {
         global_to_chunk(self.pixels_per_chunk, global)
     }
 
-    /// Bottom left corner of the chunk
+    /// Bottom left corner of the chunk.
     #[inline]
     pub fn chunk_to_global(&self, chunk: IVec2) -> Vec2 {
         chunk_to_global(self.pixels_per_chunk, chunk)
     }
 
-    pub(crate) fn iter_chunks_on_aabb(&self, aabb: Aabb2d) -> impl Iterator<Item = &Vec<Entity>> {
+    /// Returns the size of the chunk in pixels.
+    #[inline]
+    pub fn pixels_per_chunk(&self) -> f32 {
+        self.pixels_per_chunk
+    }
+
+    /// Iterates over all chunks that intersect with the given `aabb`.
+    pub fn iter_chunks_on_aabb(&self, aabb: Aabb2d) -> impl Iterator<Item = &Vec<Entity>> {
         let min = self.global_to_chunk(aabb.min);
         let max = self.global_to_chunk(aabb.max);
 
@@ -82,7 +121,7 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
             .filter_map(|(x, y)| self.chunks.get(&IVec2::new(x, y)))
     }
 
-    pub(crate) fn foreach_chunk_on_aabb_mut(
+    fn foreach_chunk_on_aabb_mut(
         &mut self,
         aabb: Aabb2d,
         mut f: impl FnMut(&mut Vec<Entity>),
@@ -98,16 +137,16 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
         }
     }
 
-    pub(crate) fn add_entity(&mut self, entity: Entity, aabb: Aabb2d) {
+    fn add_entity(&mut self, entity: Entity, aabb: Aabb2d) {
         self.foreach_chunk_on_aabb_mut(aabb, |chunk| chunk.push(entity));
     }
 
-    pub(crate) fn change_entity(&mut self, entity: Entity, old_aabb: Aabb2d, new_aabb: Aabb2d) {
+    fn change_entity(&mut self, entity: Entity, old_aabb: Aabb2d, new_aabb: Aabb2d) {
         self.remove_entity(entity, old_aabb);
         self.add_entity(entity, new_aabb);
     }
 
-    pub(crate) fn remove_entity(&mut self, entity: Entity, aabb: Aabb2d) {
+    fn remove_entity(&mut self, entity: Entity, aabb: Aabb2d) {
         self.foreach_chunk_on_aabb_mut(aabb, |chunk| {
             if let Some(entity_index) = chunk.iter().position(|entry| *entry == entity) {
                 chunk.swap_remove(entity_index);
@@ -117,18 +156,18 @@ impl<Layer: LayerGroup> SpacialIndex<Layer> {
 }
 
 #[derive(Component, Debug, Clone)]
-pub struct SpacialIndexRegistry<Layer: LayerGroup> {
-    pub(crate) current_shape_bounding: Aabb2d,
-    /// Global position
-    pub(crate) current_position: Vec2,
+pub struct SpacialIndexRegistry<Group: ColliderGroup> {
+    current_shape_bounding: Aabb2d,
+    current_position: Vec2,
     last_shape_bounding: Aabb2d,
-    /// Local position
     last_position: Vec2,
 
-    marker: PhantomData<Layer>,
+    marker: PhantomData<Group>,
 }
 
-impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
+impl<Group: ColliderGroup> SpacialIndexRegistry<Group> {
+    /// Creates a new instance with invalid fields.
+    /// The
     pub fn not_valid() -> Self {
         Self {
             current_shape_bounding: Aabb2d::new(Vec2::NAN, Vec2::NAN),
@@ -139,8 +178,15 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
         }
     }
 
+    fn global_last_aabb(&self) -> Aabb2d {
+        Aabb2d {
+            min: self.last_shape_bounding.min + self.last_position,
+            max: self.last_shape_bounding.max + self.last_position,
+        }
+    }
+
     #[inline]
-    pub fn aabb(&self) -> Aabb2d {
+    pub fn global_aabb(&self) -> Aabb2d {
         Aabb2d {
             min: self.current_shape_bounding.min + self.current_position,
             max: self.current_shape_bounding.max + self.current_position,
@@ -148,14 +194,16 @@ impl<Layer: LayerGroup> SpacialIndexRegistry<Layer> {
     }
 
     #[inline]
-    fn last_aabb(&self) -> Aabb2d {
-        Aabb2d {
-            min: self.last_shape_bounding.min + self.last_position,
-            max: self.last_shape_bounding.max + self.last_position,
-        }
+    pub fn current_shape_bounding(&self) -> Aabb2d {
+        self.current_shape_bounding
     }
 
-    fn update(&mut self, hurtbox: &HurtboxShape<Layer>, new_position: Vec2) {
+    #[inline]
+    pub fn current_position(&self) -> Vec2 {
+        self.current_position
+    }
+
+    fn update(&mut self, hurtbox: &HurtboxShape<Group>, new_position: Vec2) {
         let new_shape_bounding = hurtbox.bounding();
 
         self.last_position = self.current_position;
@@ -178,12 +226,12 @@ macro_rules! hurtbox_registering_error {
     };
 }
 
-fn on_add_spacial_index_registry<Layer: LayerGroup>(
-    trigger: Trigger<OnAdd, SpacialIndexRegistry<Layer>>,
-    mut index: ResMut<SpacialIndex<Layer>>,
+fn on_add_spacial_index_registry<Group: ColliderGroup>(
+    trigger: Trigger<OnAdd, SpacialIndexRegistry<Group>>,
+    mut index: ResMut<SpacialIndex<Group>>,
     mut hurtboxes: Query<(
-        &mut SpacialIndexRegistry<Layer>,
-        Option<&HurtboxShape<Layer>>,
+        &mut SpacialIndexRegistry<Group>,
+        Option<&HurtboxShape<Group>>,
     )>,
     transform_helper: TransformHelper,
 ) {

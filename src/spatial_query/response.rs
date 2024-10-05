@@ -1,6 +1,6 @@
 use bevy::math::{Dir2, Vec2};
 
-use super::{collider::Collider, collisions_query::CollisionsQuery, ColliderGroup};
+use super::{collider::Collider, spatial_query::SpatialQuery, ColliderGroup};
 
 /// Contains information about one of collisions that was processed with [`CollisionResponse`].
 #[derive(Debug)]
@@ -215,7 +215,7 @@ impl<
 /// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
 pub trait CollisionResponse {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
@@ -228,7 +228,7 @@ pub trait CollisionResponse {
 pub struct Ignore;
 
 impl CollisionResponse for Ignore {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         _collisions: Collisions,
         _hitbox: Collider<'a, Group::Hitbox>,
@@ -243,7 +243,7 @@ impl CollisionResponse for Ignore {
 pub struct Pass;
 
 impl CollisionResponse for Pass {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
@@ -263,7 +263,7 @@ impl CollisionResponse for Pass {
 pub struct Touch;
 
 impl CollisionResponse for Touch {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
@@ -293,7 +293,7 @@ pub fn trajectory_change_on_touch<
     'a,
     F: FnMut(Vec2, Dir2) -> Vec2,
     Group: ColliderGroup,
-    Collisions: CollisionsQuery<Group>,
+    Collisions: SpatialQuery<Group>,
 >(
     collisions: Collisions,
     mut hitbox: Collider<'a, Group::Hitbox>,
@@ -351,7 +351,7 @@ pub fn trajectory_change_on_touch<
 pub struct Slide;
 
 impl CollisionResponse for Slide {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
@@ -378,7 +378,7 @@ fn bounce(left_movement: Vec2, normal: Dir2) -> Vec2 {
 pub struct Bounce;
 
 impl CollisionResponse for Bounce {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,
@@ -409,7 +409,7 @@ impl<NextResponse: CollisionResponse> LimitedBounce<NextResponse> {
 
 
 impl CollisionResponse for LimitedBounce<Ignore> {
-    fn respond<'a, Group: ColliderGroup, Collisions: CollisionsQuery<Group> + 'a>(
+    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
         &'a mut self,
         collisions: Collisions,
         hitbox: Collider<'a, Group::Hitbox>,

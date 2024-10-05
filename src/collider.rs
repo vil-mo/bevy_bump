@@ -1,4 +1,4 @@
-use crate::utils::Bounded;
+use crate::bounded::Bounded;
 use bevy::math::{
     bounding::{Aabb2d, BoundingCircle, BoundingVolume},
     Dir2, Vec2,
@@ -266,15 +266,22 @@ impl ColliderInteraction<BoundingCircle> for BoundingCircle {
     }
 
     fn cast(
-            &self,
-            self_position: Vec2,
-            other: &BoundingCircle,
-            other_position: Vec2,
-            offset_dir: Dir2,
-            offset_len: f32,
-        ) -> Option<(f32, Dir2)> {
+        &self,
+        self_position: Vec2,
+        other: &BoundingCircle,
+        other_position: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> Option<(f32, Dir2)> {
         let circle = BoundingCircle::new(other.center, other.radius() + self.radius());
-        Vec2::cast(&self.center, self_position, &circle, other_position, offset_dir, offset_len)
+        Vec2::cast(
+            &self.center,
+            self_position,
+            &circle,
+            other_position,
+            offset_dir,
+            offset_len,
+        )
     }
 }
 
@@ -323,14 +330,20 @@ impl ColliderInteraction<Vec2> for BoundingCircle {
     }
 
     fn cast(
-            &self,
-            self_position: Vec2,
-            other: &Vec2,
-            other_position: Vec2,
-            offset_dir: Dir2,
-            offset_len: f32,
-        ) -> Option<(f32, Dir2)> {
-        other.cast(other_position, self, self_position, offset_dir, offset_len)
+        &self,
+        self_position: Vec2,
+        other: &Vec2,
+        other_position: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> Option<(f32, Dir2)> {
+        other
+            .cast(other_position, self, self_position, -offset_dir, offset_len)
+            .map(|(len, normal)| (len, -normal))
     }
 }
 
+// TODO
+// impl ColliderInteraction<BoundingCircle> for Aabb2d {
+
+// }

@@ -8,7 +8,7 @@ use crate::{
         components::{HitboxLayer, HitboxMonitoring, HitboxShape},
         CollisionDetectionSet, LayerGroup,
     },
-    layer_types::collision_report_strategy::CollisionInformation,
+    implementaitons::collision_report_strategy::CollisionInformation,
 };
 use bevy::{ecs::system::StaticSystemParam, prelude::*};
 
