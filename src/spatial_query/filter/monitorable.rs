@@ -1,16 +1,34 @@
-use bevy::prelude::{Component, Deref};
-use std::marker::PhantomData;
-
+use super::{SpatialQueryFilter, SystemSpatialQueryFilter};
 use crate::ColliderGroup;
-
-use super::Filter;
+use bevy::{ecs::system::SystemParam, prelude::*};
+use std::marker::PhantomData;
 
 pub struct Monitorable;
 
-impl Filter for Monitorable {
-    type FilterParam = HurtboxMonitorable<ColliderGroup>;
-    fn filter(param: Self::FilterParam) -> bool {
-        true
+impl SpatialQueryFilter for Monitorable {
+    type HitboxFilterParam<'a> = ();
+    type HurtboxFilterParam<'a> = bool;
+
+    #[inline]
+    fn filter(_hitbox_data: (), hurtbox_data: bool) -> bool {
+        hurtbox_data
+    }
+}
+
+impl<Group: ColliderGroup> SystemSpatialQueryFilter<Group> for Monitorable {
+    type HitboxSystemParam = ();
+    type HitboxQueryFilter = ();
+
+    type HurtboxSystemParam = Query<'static, 'static, &'static HurtboxMonitorable<Group>>;
+    type HurtboxQueryFilter = ();
+
+    fn hitbox_filter_param<'a>(_hitbox: Entity, _system_param: &mut ()) -> () {}
+
+    fn hurtbox_filter_param(
+        hurtbox: Entity,
+        system_param: &mut <Self::HurtboxSystemParam as SystemParam>::Item<'_, '_>,
+    ) -> bool {
+        system_param.get(hurtbox).copied().unwrap_or_default().0
     }
 }
 

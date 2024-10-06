@@ -1,12 +1,15 @@
-use bevy::{app::App, prelude::SystemSet};
+use bevy::{
+    app::{App, Plugin},
+    prelude::SystemSet,
+};
 use collider::ColliderInteraction;
 
 pub mod bounded;
 pub mod collider;
-pub mod spatial_query;
 pub mod components;
-pub mod implementations;
-pub mod layer;
+pub mod spatial_query;
+// pub mod implementations;
+// pub mod layer;
 
 pub mod prelude {}
 
@@ -17,11 +20,19 @@ pub trait ColliderGroup: Send + Sync + Sized + 'static {
     /// Bodies that generate collisions and usually stop actor's movement
     type Hurtbox: Send + Sync + 'static;
 
-    type Implementation: CollisionImplimentation<Self>;
+    type Implementation: CollisionImplementation<Self>;
 }
 
-pub trait CollisionImplimentation<Group: ColliderGroup<Implementation = Self>> {
-    fn build(self, app: &mut App);
+pub trait CollisionImplementation<Group: ColliderGroup<Implementation = Self>>: Send + Sync + 'static {
+    fn build(&self, app: &mut App);
+}
+
+pub struct WithColliderGroup<Group: ColliderGroup>(pub Group::Implementation);
+
+impl<Group: ColliderGroup> Plugin for WithColliderGroup<Group> {
+    fn build(&self, app: &mut App) {
+        Group::Implementation::build(&self.0, app);
+    }
 }
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,4 +41,3 @@ pub enum CollisionDetectionSet {
     Colliding,
     Last,
 }
-

@@ -1,33 +1,23 @@
-use crate::core::ColliderGroup;
-
-use super::{spatial_index::SpacialIndexRegistry, LayerGroup};
-use bevy::prelude::*;
 use std::marker::PhantomData;
-/// Layer of the hitbox. Stores [`LayerGroup::Layer`].
-/// If [CollisionLayer::collides](crate::ecs_core::layer::CollisionLayer::collides) returns `false`,
-/// the collision with the hurtbox will be ignored.
-#[derive(Component, Deref)]
-pub struct HitboxLayer<Group: LayerGroup>(pub Group::Layer);
 
-#[derive(Component, Deref)]
-pub struct HurtboxLayer<Group: LayerGroup>(pub Group);
+use bevy::prelude::Component;
 
 #[derive(Component)]
 #[component(storage = "SparseSet")]
-pub struct RegisterHurtbox<Group: ColliderGroup>(PhantomData<Group>);
+pub struct RegisterHurtbox<T>(PhantomData<T>);
 
-impl<Group: ColliderGroup> RegisterHurtbox<Group> {
+impl<T> RegisterHurtbox<T> {
     pub fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-fn register_hurtbox<Group: ColliderGroup>(
+fn register_hurtbox<T>(
     to_register: Query<
         Entity,
         (
-            With<RegisterHurtbox<Group>>,
-            With<HurtboxShape<Group>>,
+            With<RegisterHurtbox<T>>,
+            With<HurtboxShape<T>>,
             With<Transform>,
         ),
     >,
@@ -41,20 +31,20 @@ fn register_hurtbox<Group: ColliderGroup>(
                 // So we need to check before inserting
 
                 let mut entity_mut = world.entity_mut(entity);
-                if !entity_mut.contains::<RegisterHurtbox<Group>>() {
+                if !entity_mut.contains::<RegisterHurtbox<T>>() {
                     return;
                 }
-                entity_mut.remove::<RegisterHurtbox<Group>>();
+                entity_mut.remove::<RegisterHurtbox<T>>();
 
-                if entity_mut.contains::<SpacialIndexRegistry<Group>>() {
+                if entity_mut.contains::<SpacialIndexRegistry<T>>() {
                     return;
                 }
 
-                if entity_mut.contains::<HurtboxLayer<Group>>()
-                    && entity_mut.contains::<HurtboxShape<Group>>()
+                if entity_mut.contains::<HurtboxLayer<T>>()
+                    && entity_mut.contains::<HurtboxShape<T>>()
                     && entity_mut.contains::<Transform>()
                 {
-                    entity_mut.insert(SpacialIndexRegistry::<Group>::not_valid());
+                    entity_mut.insert(SpacialIndexRegistry::<T>::not_valid());
                 }
             });
     }

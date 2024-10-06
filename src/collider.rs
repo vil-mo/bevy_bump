@@ -1,6 +1,7 @@
-use crate::bounded::Bounded;
+use crate::bounded::{Bounded, Point, RoundedRectangle};
 use bevy::math::{
-    bounding::{Aabb2d, BoundingCircle, BoundingVolume},
+    bounding::{Aabb2d, BoundingVolume},
+    primitives::{Circle, Rectangle},
     Dir2, Vec2,
 };
 
@@ -97,20 +98,30 @@ impl<C, T: ?Sized + ColliderInteraction<C>> ColliderInteraction<C> for Box<T> {
     }
 }
 
-impl ColliderInteraction<Vec2> for Vec2 {
-    fn intersect(&self, self_position: Vec2, other: &Vec2, other_position: Vec2) -> bool {
-        *self + self_position == *other + other_position
+//
+//
+//
+//
+//
+//
+//
+//
+//
+
+impl ColliderInteraction<Point> for Point {
+    fn intersect(&self, self_position: Vec2, _other: &Point, other_position: Vec2) -> bool {
+        self_position == other_position
     }
 
     fn cast(
         &self,
         self_position: Vec2,
-        other: &Vec2,
+        _other: &Point,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
     ) -> Option<(f32, Dir2)> {
-        let diff = *self + self_position - *other + other_position;
+        let diff = self_position - other_position;
         if diff.x / diff.y == offset_dir.x / offset_dir.y {
             let len = diff.length();
             if len < offset_len {
@@ -122,15 +133,15 @@ impl ColliderInteraction<Vec2> for Vec2 {
     }
 }
 
-impl ColliderInteraction<Aabb2d> for Aabb2d {
-    fn intersect(&self, self_position: Vec2, other: &Aabb2d, other_position: Vec2) -> bool {
+impl ColliderInteraction<Rectangle> for Rectangle {
+    fn intersect(&self, self_position: Vec2, other: &Rectangle, other_position: Vec2) -> bool {
         let self_aabb = Aabb2d {
-            min: self.min + self_position,
-            max: self.max + self_position,
+            min: self_position - self.half_size,
+            max: self_position + self.half_size,
         };
         let other_aabb = Aabb2d {
-            min: other.min + other_position,
-            max: other.max + other_position,
+            min: other_position - other.half_size,
+            max: other_position + other.half_size,
         };
 
         self_aabb.contains(&other_aabb)
@@ -139,54 +150,44 @@ impl ColliderInteraction<Aabb2d> for Aabb2d {
     fn cast(
         &self,
         self_position: Vec2,
-        other: &Aabb2d,
+        other: &Rectangle,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
     ) -> Option<(f32, Dir2)> {
-        let aabb = Aabb2d {
-            min: other.min - self.max,
-            max: other.max - self.min,
+        let rect = Rectangle {
+            half_size: other.half_size + self.half_size,
         };
 
-        Vec2::cast(
-            &Vec2::new(0., 0.),
-            self_position,
-            &aabb,
-            other_position,
-            offset_dir,
-            offset_len,
-        )
+        Point.cast(self_position, &rect, other_position, offset_dir, offset_len)
     }
 }
 
-impl ColliderInteraction<Aabb2d> for Vec2 {
-    fn intersect(&self, self_position: Vec2, other: &Aabb2d, other_position: Vec2) -> bool {
+impl ColliderInteraction<Rectangle> for Point {
+    fn intersect(&self, self_position: Vec2, other: &Rectangle, other_position: Vec2) -> bool {
         let aabb = Aabb2d {
-            min: other.min + other_position,
-            max: other.max + other_position,
+            min: other_position - other.half_size,
+            max: other_position + other.half_size,
         };
-        let origin = *self + self_position;
 
-        aabb.min.x <= origin.x
-            && origin.x <= aabb.max.x
-            && aabb.min.y <= origin.y
-            && origin.y <= aabb.max.y
+        aabb.min.x <= self_position.x
+            && self_position.x <= aabb.max.x
+            && aabb.min.y <= self_position.y
+            && self_position.y <= aabb.max.y
     }
 
     fn cast(
         &self,
         self_position: Vec2,
-        other: &Aabb2d,
+        other: &Rectangle,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
     ) -> Option<(f32, Dir2)> {
         let aabb = Aabb2d {
-            min: other.min + other_position,
-            max: other.max + other_position,
+            min: other_position - other.half_size,
+            max: other_position + other.half_size,
         };
-        let origin = *self + self_position;
 
         let (min_x, max_x) = if offset_dir.x.is_sign_positive() {
             (aabb.min.x, aabb.max.x)
@@ -202,10 +203,10 @@ impl ColliderInteraction<Aabb2d> for Vec2 {
         // Calculate the minimum/maximum time for each axis based on how much the direction goes that
         // way. These values can get arbitrarily large, or even become NaN, which is handled by the
         // min/max operations below
-        let tmin_x = (min_x - origin.x) / offset_dir.x;
-        let tmin_y = (min_y - origin.y) / offset_dir.y;
-        let tmax_x = (max_x - origin.x) / offset_dir.x;
-        let tmax_y = (max_y - origin.y) / offset_dir.y;
+        let tmin_x = (min_x - self_position.x) / offset_dir.x;
+        let tmin_y = (min_y - self_position.y) / offset_dir.y;
+        let tmax_x = (max_x - self_position.x) / offset_dir.x;
+        let tmax_y = (max_y - self_position.y) / offset_dir.y;
 
         // An axis that is not relevant to the ray direction will be NaN. When one of the arguments
         // to min/max is NaN, the other argument is used.
@@ -238,9 +239,9 @@ impl ColliderInteraction<Aabb2d> for Vec2 {
     }
 }
 
-impl ColliderInteraction<Vec2> for Aabb2d {
+impl ColliderInteraction<Point> for Rectangle {
     #[inline]
-    fn intersect(&self, self_position: Vec2, other: &Vec2, other_position: Vec2) -> bool {
+    fn intersect(&self, self_position: Vec2, other: &Point, other_position: Vec2) -> bool {
         other.intersect(other_position, self, self_position)
     }
 
@@ -248,7 +249,7 @@ impl ColliderInteraction<Vec2> for Aabb2d {
     fn cast(
         &self,
         self_position: Vec2,
-        other: &Vec2,
+        other: &Point,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
@@ -259,23 +260,21 @@ impl ColliderInteraction<Vec2> for Aabb2d {
     }
 }
 
-impl ColliderInteraction<BoundingCircle> for BoundingCircle {
-    fn intersect(&self, self_position: Vec2, other: &BoundingCircle, other_position: Vec2) -> bool {
-        (self.radius() + other.radius()).powi(2)
-            >= (self_position + self.center).distance_squared(other_position + other.center)
+impl ColliderInteraction<Circle> for Circle {
+    fn intersect(&self, self_position: Vec2, other: &Circle, other_position: Vec2) -> bool {
+        (self.radius + other.radius).powi(2) >= self_position.distance_squared(other_position)
     }
 
     fn cast(
         &self,
         self_position: Vec2,
-        other: &BoundingCircle,
+        other: &Circle,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
     ) -> Option<(f32, Dir2)> {
-        let circle = BoundingCircle::new(other.center, other.radius() + self.radius());
-        Vec2::cast(
-            &self.center,
+        let circle = Circle::new(other.radius + self.radius);
+        Point.cast(
             self_position,
             &circle,
             other_position,
@@ -285,29 +284,23 @@ impl ColliderInteraction<BoundingCircle> for BoundingCircle {
     }
 }
 
-impl ColliderInteraction<BoundingCircle> for Vec2 {
-    fn intersect(&self, self_position: Vec2, other: &BoundingCircle, other_position: Vec2) -> bool {
-        let origin = *self + self_position;
-        let circle = BoundingCircle::new(other_position + other.center, other.radius());
-
-        circle.radius().powi(2) >= origin.distance_squared(circle.center)
+impl ColliderInteraction<Circle> for Point {
+    fn intersect(&self, self_position: Vec2, other: &Circle, other_position: Vec2) -> bool {
+        other.radius.powi(2) >= self_position.distance_squared(other_position)
     }
 
     fn cast(
         &self,
         self_position: Vec2,
-        other: &BoundingCircle,
+        other: &Circle,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
     ) -> Option<(f32, Dir2)> {
-        let origin = *self + self_position;
-        let circle = BoundingCircle::new(other_position + other.center, other.radius());
-
-        let diff = origin - circle.center;
+        let diff = self_position - other_position;
         let projected = diff.dot(*offset_dir);
         let closest_point = diff - projected * *offset_dir;
-        let distance_squared = circle.radius().powi(2) - closest_point.length_squared();
+        let distance_squared = other.radius.powi(2) - closest_point.length_squared();
         if distance_squared < 0. || projected.powi(2).copysign(-projected) < -distance_squared {
             None
         } else {
@@ -315,7 +308,7 @@ impl ColliderInteraction<BoundingCircle> for Vec2 {
             if toi > offset_len {
                 None
             } else if toi > 0. {
-                let normal = (diff + offset_dir * toi) / circle.radius();
+                let normal = (diff + offset_dir * toi) / other.radius;
                 Some((toi, Dir2::new_unchecked(normal)))
             } else {
                 Some((0., -offset_dir))
@@ -324,15 +317,15 @@ impl ColliderInteraction<BoundingCircle> for Vec2 {
     }
 }
 
-impl ColliderInteraction<Vec2> for BoundingCircle {
-    fn intersect(&self, self_position: Vec2, other: &Vec2, other_position: Vec2) -> bool {
+impl ColliderInteraction<Point> for Circle {
+    fn intersect(&self, self_position: Vec2, other: &Point, other_position: Vec2) -> bool {
         other.intersect(other_position, self, self_position)
     }
 
     fn cast(
         &self,
         self_position: Vec2,
-        other: &Vec2,
+        other: &Point,
         other_position: Vec2,
         offset_dir: Dir2,
         offset_len: f32,
@@ -343,7 +336,104 @@ impl ColliderInteraction<Vec2> for BoundingCircle {
     }
 }
 
-// TODO
-// impl ColliderInteraction<BoundingCircle> for Aabb2d {
+impl ColliderInteraction<Rectangle> for Circle {
+    fn intersect(&self, self_position: Vec2, other: &Rectangle, other_position: Vec2) -> bool {
+        let rounded = RoundedRectangle {
+            rect: Rectangle {
+                half_size: other.half_size + Vec2::ONE * self.radius,
+            },
+            radius: self.radius,
+        };
+        Point.intersect(self_position, &rounded, other_position)
+    }
 
-// }
+    fn cast(
+        &self,
+        self_position: Vec2,
+        other: &Rectangle,
+        other_position: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> Option<(f32, Dir2)> {
+        let rounded = RoundedRectangle {
+            rect: Rectangle {
+                half_size: other.half_size + Vec2::ONE * self.radius,
+            },
+            radius: self.radius,
+        };
+
+        Point.cast(
+            self_position,
+            &rounded,
+            other_position,
+            offset_dir,
+            offset_len,
+        )
+    }
+}
+
+impl ColliderInteraction<Circle> for Rectangle {
+    fn intersect(&self, self_position: Vec2, other: &Circle, other_position: Vec2) -> bool {
+        other.intersect(other_position, self, self_position)
+    }
+
+    fn cast(
+            &self,
+            self_position: Vec2,
+            other: &Circle,
+            other_position: Vec2,
+            offset_dir: Dir2,
+            offset_len: f32,
+        ) -> Option<(f32, Dir2)> {
+        other.cast(other_position, self, self_position, -offset_dir, offset_len)
+            .map(|(len, normal)| (len, -normal))
+    }
+}
+
+impl ColliderInteraction<RoundedRectangle> for Point {
+    fn intersect(
+        &self,
+        self_position: Vec2,
+        other: &RoundedRectangle,
+        other_position: Vec2,
+    ) -> bool {
+        // TODO: this is wrong
+        other.rect.intersect(other_position, self, self_position)
+    }
+
+    fn cast(
+        &self,
+        self_position: Vec2,
+        other: &RoundedRectangle,
+        other_position: Vec2,
+        offset_dir: Dir2,
+        offset_len: f32,
+    ) -> Option<(f32, Dir2)> {
+        let Some((rect_dist, rect_norm)) = self.cast(
+            self_position,
+            &other.rect,
+            other_position,
+            offset_dir,
+            offset_len,
+        ) else {
+            return None;
+        };
+
+        let collision_relative_to_other_pos = offset_dir * rect_dist - other_position;
+        let before_radius = other.rect.half_size - Vec2::ONE * other.radius;
+        let abs_collision = collision_relative_to_other_pos.abs();
+        if abs_collision.x > before_radius.x && abs_collision.y > before_radius.y {
+            self.cast(
+                self_position,
+                &Circle::new(other.radius),
+                other_position,
+                offset_dir,
+                offset_len,
+            )
+        } else {
+            Some((rect_dist, rect_norm))
+        }
+    }
+}
+
+// TODO: rounded rectangle implementations
