@@ -1,37 +1,29 @@
-use super::{
-    components::{HurtboxLayer, HurtboxMonitorable, HurtboxShape},
-    spatial_index::{SpacialIndex, SpacialIndexRegistry},
-    LayerGroup,
-};
-use crate::core::{
-    collider::Collider,
-    collisions_query::CollisionsQuery,
-    response::{CollisionResponse, RunningResponse},
-    ColliderGroup,
-};
-use crate::bounded::Bounded;
+use crate::{bounded::Bounded, spatial_query::SpatialQuery, ColliderGroup};
 use bevy::{
     ecs::{entity::EntityHashSet, system::SystemParam},
     math::bounding::{Aabb2d, BoundingVolume},
     prelude::*,
 };
 
+use super::spatial_index::SpatialIndex;
+
 #[derive(SystemParam)]
-pub struct CollisionCheck<'w, 's, Layer: LayerGroup> {
-    world: Res<'w, SpacialIndex<Layer>>,
+pub struct SpatialIndexQuery<'w, 's, Group: ColliderGroup> {
+    world: Res<'w, SpatialIndex<Group>>,
     hurtboxes: Query<
         'w,
         's,
         (
-            &'static HurtboxShape<Layer>,
-            &'static HurtboxLayer<Layer>,
-            &'static SpacialIndexRegistry<Layer>,
-            Option<&'static HurtboxMonitorable<Layer>>,
+            &'static HurtboxShape<Group>,
+            &'static SpacialIndexRegistry<Group>,
         ),
     >,
 }
 
-impl<'w, 's, Layer: LayerGroup> CollisionCheck<'w, 's, Layer> {
+impl SpatialQuery for SpatialIndexQuery<'_, '_, Group> {
+}
+
+impl<'w, 's, Layer: LayerGroup> SpatialIndexQuery<'w, 's, Layer> {
     pub fn collisions_on_layer<'a>(&'a self, layer: &'a Layer) -> CollisionsOnLayer<'a, Layer> {
         CollisionsOnLayer {
             inner: self.collisions_on_layer_allow_duplication(layer),
@@ -68,7 +60,7 @@ impl<'w, 's, Layer: LayerGroup> CollisionCheck<'w, 's, Layer> {
 }
 
 pub struct CollisionsOnLayerAllowDuplication<'a, Layer: LayerGroup> {
-    collision_check: &'a CollisionCheck<'a, 'a, Layer>,
+    collision_check: &'a SpatialIndexQuery<'a, 'a, Layer>,
     layer: &'a Layer,
 }
 
@@ -81,7 +73,7 @@ impl<Layer: LayerGroup> Clone for CollisionsOnLayerAllowDuplication<'_, Layer> {
 impl<Layer: LayerGroup> Copy for CollisionsOnLayerAllowDuplication<'_, Layer> {}
 
 impl<'a, Layer: LayerGroup> CollisionsOnLayerAllowDuplication<'a, Layer> {
-    fn new(collision_check: &'a CollisionCheck<'a, 'a, Layer>, layer: &'a Layer) -> Self {
+    fn new(collision_check: &'a SpatialIndexQuery<'a, 'a, Layer>, layer: &'a Layer) -> Self {
         Self {
             collision_check,
             layer,

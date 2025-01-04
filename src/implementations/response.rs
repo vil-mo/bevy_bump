@@ -1,21 +1,20 @@
+use crate::{collider::{Collider, ColliderInteraction}, spatial_query::SpatialQuery};
 use bevy::math::{Dir2, Vec2};
-
-use super::{collider::Collider, spatial_query::SpatialQuery, ColliderGroup};
 
 /// Contains information about one of collisions that was processed with [`CollisionResponse`].
 #[derive(Debug)]
-pub struct ResponseCollisionInformation<Group: ColliderGroup> {
+pub struct ResponseCollisionInformation<T: SpatialQuery> {
     /// The point on the desired path (or on the path corrected by solver) at wich collision was detected
     /// Should make sense for it to be [`Collider::position`] of actor that performed movement
     pub global_position: Vec2,
     /// Result of [`Collider::normal`] of body against which collision was detected
     pub normal: Dir2,
-    pub data: Group::HurtboxData,
+    pub data: T::HurtboxData,
 }
 
-impl<Group: ColliderGroup> Clone for ResponseCollisionInformation<Group>
+impl<T: SpatialQuery> Clone for ResponseCollisionInformation<T>
 where
-    Group::HurtboxData: Clone,
+    T::HurtboxData: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -26,16 +25,13 @@ where
     }
 }
 
-impl<Group: ColliderGroup> Copy for ResponseCollisionInformation<Group> where
-    Group::HurtboxData: Copy
-{
-}
+impl<T: SpatialQuery> Copy for ResponseCollisionInformation<T> where T::HurtboxData: Copy {}
 
-impl<Group: ColliderGroup> ResponseCollisionInformation<Group> {
+impl<T: SpatialQuery> ResponseCollisionInformation<T> {
     fn from_cast(
         position: Vec2,
         direction: Dir2,
-    ) -> impl FnMut((f32, Dir2, Group::HurtboxData)) -> Self {
+    ) -> impl FnMut((f32, Dir2, T::HurtboxData)) -> Self {
         move |(dist, normal, data)| Self {
             global_position: position + direction * dist,
             normal,
@@ -44,19 +40,19 @@ impl<Group: ColliderGroup> ResponseCollisionInformation<Group> {
     }
 }
 
-pub trait RunningResponse<Group: ColliderGroup>: Sized {
-    type AfterOutput: Iterator<Item = ResponseCollisionInformation<Group>>;
+pub trait RunningResponse<T: SpatialQuery>: Sized {
+    type AfterOutput: Iterator<Item = ResponseCollisionInformation<T>>;
 
-    fn next(self) -> RunningResponseVariant<Self, Group>;
+    fn next(self) -> RunningResponseVariant<Self, T>;
 
-    fn into_iter(self, buf: &mut Vec2) -> ResponseIterator<Self, Group> {
+    fn into_iter(self, buf: &mut Vec2) -> ResponseIterator<Self, T> {
         ResponseIterator {
             buf,
             current_iter: ResponseIteratorVariant::BeforeOutput(self),
         }
     }
 
-    fn ignore_resulting_offset(self) -> IgnoreResultingOffsetIterator<Self, Group> {
+    fn ignore_resulting_offset(self) -> IgnoreResultingOffsetIterator<Self, T> {
         IgnoreResultingOffsetIterator {
             curent_iter: ResponseIteratorVariant::BeforeOutput(self),
         }
@@ -64,7 +60,7 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
 
     fn until_resulting_offset(
         mut self,
-        mut f: impl FnMut(ResponseCollisionInformation<Group>),
+        mut f: impl FnMut(ResponseCollisionInformation<T>),
     ) -> (Vec2, Self::AfterOutput) {
         use RunningResponseVariant::*;
 
@@ -79,7 +75,7 @@ pub trait RunningResponse<Group: ColliderGroup>: Sized {
         }
     }
 
-    fn foreach(self, f: impl FnMut(ResponseCollisionInformation<Group>)) -> Vec2 {
+    fn foreach(self, f: impl FnMut(ResponseCollisionInformation<T>)) -> Vec2 {
         let mut buf = Vec2::ZERO;
         self.into_iter(&mut buf).for_each(f);
         buf
@@ -215,13 +211,13 @@ impl<
 /// Returns actual offset that actor should move from the point at with collision was detected
 /// and information about all the collisions that happened
 pub trait CollisionResponse {
-    fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(
+    fn respond<'a, Hitbox: ColliderInteraction<SQ::Hurtbox>, SQ: SpatialQuery + 'a>(
         &'a mut self,
-        collisions: Collisions,
-        hitbox: Collider<'a, Group::Hitbox>,
+        collisions: SQ,
+        hitbox: Collider<'a, Hitbox>,
         offset_dir: Dir2,
         offset_len: f32,
-    ) -> impl RunningResponse<Group> + 'a;
+    ) -> impl RunningResponse<SQ> + 'a;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -346,7 +342,6 @@ pub fn trajectory_change_on_touch<
     (actual_offset, res_vec.into_iter())
 }
 
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Slide;
 
@@ -406,7 +401,6 @@ impl<NextResponse: CollisionResponse> LimitedBounce<NextResponse> {
         }
     }
 }
-
 
 impl CollisionResponse for LimitedBounce<Ignore> {
     fn respond<'a, Group: ColliderGroup, Collisions: SpatialQuery<Group> + 'a>(

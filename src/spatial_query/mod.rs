@@ -5,8 +5,7 @@ use filter::SpatialQueryFilter;
 pub mod filter;
 pub mod spatial_index;
 
-/// BroadPhase returns iterators over
-pub trait SpatialQuery: Copy {
+pub trait SpatialQuery {
     type HurtboxData;
     type Hurtbox: Send + Sync + 'static;
     type Filter: SpatialQueryFilter;
@@ -14,7 +13,7 @@ pub trait SpatialQuery: Copy {
     /// Should return only colliders that are potentially colliding with actor,
     /// and only thing that could prevent collision is stored in collider itself (usually it`s only position)
     fn intersect<Hitbox: ColliderInteraction<Self::Hurtbox>>(
-        self,
+        &mut self,
         hitbox: Collider<Hitbox>,
         filter_param: <Self::Filter as SpatialQueryFilter>::HitboxFilterParam<'_>,
     ) -> impl Iterator<Item = Self::HurtboxData>;
@@ -23,7 +22,7 @@ pub trait SpatialQuery: Copy {
     /// f32 is distance in the direction of offset_dir. It is always less than offset_len.
     /// Dir2 is normal of the collision.
     fn cast<Hitbox: ColliderInteraction<Self::Hurtbox>>(
-        self,
+        &mut self,
         hitbox: Collider<Hitbox>,
         offset_dir: Dir2,
         offset_len: f32,

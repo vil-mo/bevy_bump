@@ -8,7 +8,7 @@ pub mod bounded;
 pub mod collider;
 pub mod components;
 pub mod spatial_query;
-// pub mod implementations;
+pub mod implementations;
 // pub mod layer;
 
 pub mod prelude {}
