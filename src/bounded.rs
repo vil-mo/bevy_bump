@@ -1,22 +1,24 @@
 use bevy::math::{
     bounding::{Aabb2d, Bounded2d, BoundingCircle, BoundingVolume},
     primitives::{Primitive2d, Rectangle},
-    Rot2, Vec2,
+    Isometry2d,
 };
 
 pub struct Point;
 
 impl Primitive2d for Point {}
 impl Bounded2d for Point {
-    fn aabb_2d(&self, translation: Vec2, _rotation: impl Into<Rot2>) -> Aabb2d {
+    fn aabb_2d(&self, isometry: impl Into<Isometry2d>) -> Aabb2d {
+        let isometry = isometry.into();
         Aabb2d {
-            min: translation,
-            max: translation,
+            min: isometry.translation,
+            max: isometry.translation,
         }
     }
 
-    fn bounding_circle(&self, translation: Vec2, _rotation: impl Into<Rot2>) -> BoundingCircle {
-        BoundingCircle::new(translation, 0.0)
+    fn bounding_circle(&self, isometry: impl Into<Isometry2d>) -> BoundingCircle {
+        let isometry = isometry.into();
+        BoundingCircle::new(isometry.translation, 0.0)
     }
 }
 
@@ -56,13 +58,13 @@ mod bounded_impls {
             $(
                 impl Bounded<Aabb2d> for $t {
                     fn bounding(&self) -> Aabb2d {
-                        Bounded2d::aabb_2d(self, Vec2::ZERO, 0.0)
+                        Bounded2d::aabb_2d(self, Vec2::ZERO)
                     }
                 }
 
                 impl Bounded<BoundingCircle> for $t {
                     fn bounding(&self) -> BoundingCircle {
-                        Bounded2d::bounding_circle(self, Vec2::ZERO, 0.0)
+                        Bounded2d::bounding_circle(self, Vec2::ZERO)
                     }
                 }
             )*
@@ -74,13 +76,13 @@ mod bounded_impls {
             $(
                 impl<const N: usize> Bounded<Aabb2d> for $t<N> {
                     fn bounding(&self) -> Aabb2d {
-                        Bounded2d::aabb_2d(self, Vec2::ZERO, 0.0)
+                        Bounded2d::aabb_2d(self, Vec2::ZERO)
                     }
                 }
 
                 impl<const N: usize> Bounded<BoundingCircle> for $t<N> {
                     fn bounding(&self) -> BoundingCircle {
-                        Bounded2d::bounding_circle(self, Vec2::ZERO, 0.0)
+                        Bounded2d::bounding_circle(self, Vec2::ZERO)
                     }
                 }
             )*

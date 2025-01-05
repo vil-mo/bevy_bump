@@ -1,25 +1,24 @@
-use crate::{components::HurtboxShape, ColliderGroup};
+use super::{spatial_index::SpatialIndex, SpatialIndexColliderGroup};
+use crate::{bounded::Bounded, components::HurtboxShape};
 use bevy::{math::bounding::Aabb2d, prelude::*};
 use std::marker::PhantomData;
 
-use super::spatial_index::SpatialIndex;
-
 #[derive(Component)]
 #[component(storage = "SparseSet")]
-pub struct RegisterHurtbox<T: ColliderGroup>(PhantomData<T>);
+pub struct RegisterHurtbox<T>(PhantomData<T>);
 
-impl<T: ColliderGroup> RegisterHurtbox<T> {
+impl<T> RegisterHurtbox<T> {
     pub fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-pub(super) fn register_hurtbox<T: ColliderGroup>(
+pub(super) fn register_hurtbox<Group: SpatialIndexColliderGroup>(
     to_register: Query<
         Entity,
         (
-            With<RegisterHurtbox<T>>,
-            With<HurtboxShape<T>>,
+            With<RegisterHurtbox<Group>>,
+            With<HurtboxShape<Group>>,
             With<Transform>,
         ),
     >,
@@ -28,23 +27,22 @@ pub(super) fn register_hurtbox<T: ColliderGroup>(
     for entity in to_register.iter() {
         commands
             .entity(entity)
-            .add(|entity: Entity, world: &mut World| {
+            .queue(|entity: Entity, world: &mut World| {
                 // Until command is appled to the world, user can remove necessary components
                 // So we need to check before inserting
-
                 let mut entity_mut = world.entity_mut(entity);
-                if !entity_mut.contains::<RegisterHurtbox<T>>() {
-                    return;
-                }
-                entity_mut.remove::<RegisterHurtbox<T>>();
 
-                if entity_mut.contains::<SpatialIndexRegistry<T>>() {
+                if !entity_mut.contains::<HurtboxShape<Group>>()
+                    || !entity_mut.contains::<Transform>()
+                {
                     return;
                 }
 
-                if entity_mut.contains::<HurtboxShape<T>>() && entity_mut.contains::<Transform>() {
-                    entity_mut.insert(SpatialIndexRegistry::<T>::not_valid());
+                if entity_mut.take::<RegisterHurtbox<Group>>().is_none() {
+                    return;
                 }
+
+                entity_mut.insert(SpatialIndexRegistry::<Group>::not_valid());
             });
     }
 }
@@ -59,7 +57,7 @@ pub struct SpatialIndexRegistry<Group> {
     marker: PhantomData<Group>,
 }
 
-impl<Group: ColliderGroup> SpatialIndexRegistry<Group> {
+impl<Group: SpatialIndexColliderGroup> SpatialIndexRegistry<Group> {
     /// Creates a new instance with invalid fields.
     /// The
     pub fn not_valid() -> Self {
@@ -120,8 +118,8 @@ macro_rules! hurtbox_registering_error {
     };
 }
 
-fn on_add_spacial_index_registry<Group: ColliderGroup>(
-    trigger: Trigger<OnAdd, SpatialIndexRegistry<Group>>,
+fn on_insert_spacial_index_registry<Group: SpatialIndexColliderGroup>(
+    trigger: Trigger<OnInsert, SpatialIndexRegistry<Group>>,
     mut index: ResMut<SpatialIndex<Group>>,
     mut hurtboxes: Query<(
         &mut SpatialIndexRegistry<Group>,
@@ -152,22 +150,22 @@ fn on_add_spacial_index_registry<Group: ColliderGroup>(
         last_position: current_position,
         marker: PhantomData,
     };
-    index.add_entity(entity, registry.aabb());
+    index.add_entity(entity, registry.global_aabb());
 }
 
-fn on_remove_spacial_index_registry<Group: ColliderGroup>(
-    trigger: Trigger<OnRemove, SpatialIndexRegistry<Group>>,
+fn on_replace_spacial_index_registry<Group: SpatialIndexColliderGroup>(
+    trigger: Trigger<OnReplace, (SpatialIndexRegistry<Group>, HurtboxShape<Group>, Transform)>,
     mut index: ResMut<SpatialIndex<Group>>,
     mut hurtboxes: Query<&SpatialIndexRegistry<Group>>,
 ) {
     let entity = trigger.entity();
-
-    let registry = hurtboxes.get_mut(entity).unwrap();
-
-    index.remove_entity(entity, registry.aabb());
+    let Ok(registry) = hurtboxes.get_mut(entity) else {
+        return;
+    };
+    index.remove_entity(entity, registry.global_aabb());
 }
 
-fn update_spacial_index_registry<Group: ColliderGroup>(
+fn update_spatial_index_registry<Group: SpatialIndexColliderGroup>(
     mut hurtboxes: Query<(
         Entity,
         &mut SpatialIndexRegistry<Group>,
@@ -186,7 +184,7 @@ fn update_spacial_index_registry<Group: ColliderGroup>(
         let position_change = registry.current_position - new_position;
         if hurtbox.is_changed() || position_change != Vec2::ZERO {
             registry.update(&hurtbox, new_position);
-            spacial_index.change_entity(entity, registry.last_aabb(), registry.aabb());
+            spacial_index.change_entity(entity, registry.global_last_aabb(), registry.global_aabb());
         }
     }
 }

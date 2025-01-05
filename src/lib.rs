@@ -3,13 +3,14 @@ use bevy::{
     prelude::SystemSet,
 };
 use collider::ColliderInteraction;
+use spatial_query::filter::SystemSpatialQueryFilter;
 
 pub mod bounded;
 pub mod collider;
 pub mod components;
 pub mod spatial_query;
-pub mod implementations;
-// pub mod layer;
+pub mod spatial_index;
+// pub mod implementations;
 
 pub mod prelude {}
 
@@ -21,15 +22,16 @@ pub trait ColliderGroup: Send + Sync + Sized + 'static {
     type Hurtbox: Send + Sync + 'static;
 
     type Implementation: CollisionImplementation<Self>;
+
+    type Filter: SystemSpatialQueryFilter<Self>;
 }
 
 pub trait CollisionImplementation<Group: ColliderGroup<Implementation = Self>>: Send + Sync + 'static {
-    fn build(&self, app: &mut App);
 }
 
 pub struct WithColliderGroup<Group: ColliderGroup>(pub Group::Implementation);
 
-impl<Group: ColliderGroup> Plugin for WithColliderGroup<Group> {
+impl<Group: ColliderGroup<Implementation: Plugin>> Plugin for WithColliderGroup<Group> {
     fn build(&self, app: &mut App) {
         Group::Implementation::build(&self.0, app);
     }

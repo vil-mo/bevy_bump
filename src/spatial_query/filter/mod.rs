@@ -1,34 +1,38 @@
-use bevy::{ecs::{query::QueryFilter, system::SystemParam}, prelude::Entity};
 use crate::ColliderGroup;
+use bevy::{ecs::system::{ReadOnlySystemParam, SystemParamItem}, prelude::Entity};
 
+pub mod layer;
 pub mod monitorable;
 pub mod monitoring;
-pub mod layer;
 
 pub trait SpatialQueryFilter: Send + Sync + 'static {
-    type HitboxFilterParam<'a>;
-    type HurtboxFilterParam<'a>;
+    type HitboxParam<'a>: Copy;
+    type HurtboxParam<'a>: Copy;
 
-    fn filter(hitbox_data: Self::HitboxFilterParam<'_>, hurtbox_data: Self::HurtboxFilterParam<'_>)
-        -> bool;
+    fn filter(
+        hitbox_data: Self::HitboxParam<'_>,
+        hurtbox_data: Self::HurtboxParam<'_>,
+    ) -> bool;
 }
 
-pub trait SystemSpatialQueryFilter<Group: ColliderGroup>: SpatialQueryFilter {
-    type HitboxSystemParam: SystemParam;
-    type HitboxQueryFilter: QueryFilter;
-
-    type HurtboxSystemParam: SystemParam;
-    type HurtboxQueryFilter: QueryFilter;
+pub trait SystemSpatialQueryFilter<Group>: SpatialQueryFilter {
+    type HitboxSystemParam: ReadOnlySystemParam;
+    type HurtboxSystemParam: ReadOnlySystemParam;
 
     fn hitbox_filter_param<'a>(
         hitbox: Entity,
-        system_param: &'a mut <Self::HitboxSystemParam as SystemParam>::Item<'_, '_>,
-    ) -> Self::HitboxFilterParam<'a>;
+        system_param: &'a mut SystemParamItem<Self::HitboxSystemParam>
+    ) -> Self::HitboxParam<'a>;
     fn hurtbox_filter_param<'a>(
         hurtbox: Entity,
-        system_param: &'a mut <Self::HurtboxSystemParam as SystemParam>::Item<'_, '_>,
-    ) -> Self::HurtboxFilterParam<'a>;
+        system_param: &'a mut SystemParamItem<Self::HurtboxSystemParam>,
+    ) -> Self::HurtboxParam<'a>;
 }
+
+pub type HitboxFilterSystemParam<Group> =
+    <<Group as ColliderGroup>::Filter as SystemSpatialQueryFilter<Group>>::HitboxSystemParam;
+pub type HurtboxFilterSystemParam<Group> =
+    <<Group as ColliderGroup>::Filter as SystemSpatialQueryFilter<Group>>::HurtboxSystemParam;
 
 // TODO
 // macro_rules! impl_filter {

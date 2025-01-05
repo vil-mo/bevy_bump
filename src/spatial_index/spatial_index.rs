@@ -3,9 +3,11 @@ use bevy::math::bounding::Aabb2d;
 use bevy::prelude::*;
 use bevy::utils::HashMap;
 
-#[derive(Resource)]
+pub type Chunk = Vec<Entity>;
+
+#[derive(Resource, Reflect)]
 pub struct SpatialIndex<Group> {
-    chunks: HashMap<IVec2, Vec<Entity>>,
+    chunks: HashMap<IVec2, Chunk>,
     pixels_per_chunk: f32,
     marker: std::marker::PhantomData<fn() -> Group>,
 }
@@ -79,7 +81,7 @@ impl<Group> SpatialIndex<Group> {
     }
 
     /// Iterates over all chunks that intersect with the given `aabb`.
-    pub fn iter_chunks_on_aabb(&self, aabb: Aabb2d) -> impl Iterator<Item = &Vec<Entity>> {
+    pub fn iter_chunks_on_aabb(&self, aabb: Aabb2d) -> impl Iterator<Item = &Chunk> {
         let min = self.global_to_chunk(aabb.min);
         let max = self.global_to_chunk(aabb.max);
 
@@ -88,7 +90,7 @@ impl<Group> SpatialIndex<Group> {
             .filter_map(|(x, y)| self.chunks.get(&IVec2::new(x, y)))
     }
 
-    fn foreach_chunk_on_aabb_mut(&mut self, aabb: Aabb2d, mut f: impl FnMut(&mut Vec<Entity>)) {
+    fn foreach_chunk_on_aabb_mut(&mut self, aabb: Aabb2d, mut f: impl FnMut(&mut Chunk)) {
         let min = self.global_to_chunk(aabb.min);
         let max = self.global_to_chunk(aabb.max);
 

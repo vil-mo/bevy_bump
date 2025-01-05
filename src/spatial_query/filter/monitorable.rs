@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 pub struct Monitorable;
 
 impl SpatialQueryFilter for Monitorable {
-    type HitboxFilterParam<'a> = ();
-    type HurtboxFilterParam<'a> = bool;
+    type HitboxParam<'a> = ();
+    type HurtboxParam<'a> = bool;
 
     #[inline]
     fn filter(_hitbox_data: (), hurtbox_data: bool) -> bool {
@@ -17,10 +17,7 @@ impl SpatialQueryFilter for Monitorable {
 
 impl<Group: ColliderGroup> SystemSpatialQueryFilter<Group> for Monitorable {
     type HitboxSystemParam = ();
-    type HitboxQueryFilter = ();
-
     type HurtboxSystemParam = Query<'static, 'static, &'static HurtboxMonitorable<Group>>;
-    type HurtboxQueryFilter = ();
 
     fn hitbox_filter_param<'a>(_hitbox: Entity, _system_param: &mut ()) -> () {}
 
